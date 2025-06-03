@@ -1,0 +1,205 @@
+body {
+    font-family: Arial, sans-serif;
+    background: #2c3e50;
+    color: #ecf0f1;
+    margin: 20px;
+    overflow-x: auto;
+}
+
+h1 {
+    text-align: center;
+}
+
+#controls {
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+button, input {
+    font-size: 1rem;
+    padding: 8px 12px;
+    margin: 0 5px;
+}
+
+#message {
+    text-align: center;
+    margin-top: 10px;
+    min-height: 1.2em;
+    color: #f39c12;
+    font-weight: bold;
+}
+
+#board-container {
+    width: 820px;
+    max-width: 98vw;
+    margin: 0 auto;
+}
+
+#top-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+#freecells, #foundations {
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+}
+
+.pile, .tableau-column {
+    background: #34495e;
+    border-radius: 8px;
+    padding: 5px;
+    min-width: 90px;
+    min-height: 120px;
+    width: 90px;
+    height: 120px;
+    position: relative;
+    box-sizing: border-box;
+}
+
+/* Foundation ace backgrounds */
+.pile[data-location="dS"]::before,
+.pile[data-location="dH"]::before,
+.pile[data-location="dD"]::before,
+.pile[data-location="dC"]::before {
+    content: "";
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 112px;
+    background-repeat: no-repeat;
+    background-size: contain;
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 0;
+}
+.pile[data-location="dS"]::before { background-image: url('cards/ace_of_spades.svg'); }
+.pile[data-location="dH"]::before { background-image: url('cards/ace_of_hearts.svg'); }
+.pile[data-location="dD"]::before { background-image: url('cards/ace_of_diamonds.svg'); }
+.pile[data-location="dC"]::before { background-image: url('cards/ace_of_clubs.svg'); }
+
+/* --- Cards in Freecells and Foundations ONLY --- */
+#freecells > .pile .card,
+#foundations > .pile .card {
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 112px;
+    background-size: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 3px 5px rgba(0,0,0,0.7);
+    z-index: 1;
+    display: block;
+}
+
+/* --- Cards in Tableau: stacking logic --- */
+.tableau-column {
+    position: relative;
+    min-height: 112px;
+    width: 90px;
+    height: 420px;
+}
+
+.tableau-column .card {
+    position: absolute;
+    left: 0;
+    width: 80px;
+    height: 112px;
+    background-size: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 3px 5px rgba(0,0,0,0.7);
+    z-index: 1;
+    /* top is set by JS as (index * 35) + 'px' */
+}
+
+.card.selected {
+    outline: 3px solid #f39c12;
+    z-index: 10;
+}
+
+#tableau {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 22px;
+}
+
+/* Remove all pile labels */
+.pile-label {
+    display: none !important;
+}
+
+/* ======= Responsive Design ======= */
+
+/* Scale down all dimensions proportionally for screens up to 900px */
+@media (max-width: 900px) {
+    #board-container {
+        width: 98vw;
+        min-width: 0;
+    }
+    .pile, .tableau-column {
+        min-width: 11vw;
+        width: 11vw;
+        height: 14vw;
+        min-height: 14vw;
+        max-width: 85px;
+        max-height: 115px;
+        padding: 1vw;
+    }
+    #freecells, #foundations, #tableau {
+        gap: 2vw;
+    }
+    #top-row {
+        gap: 2vw;
+    }
+    #tableau {
+        margin-top: 3vw;
+    }
+    #controls button, #controls input {
+        font-size: 1em;
+        padding: 1vw 2vw;
+        margin: 1vw;
+    }
+}
+
+/* Under 600px: enable horizontal scroll for body and don't shrink columns/cards any further */
+@media (max-width: 600px) {
+    html, body {
+        width: 820px;
+        min-width: 820px;
+        max-width: unset;
+        margin: 0;
+        padding: 0;
+    }
+    #board-container {
+        width: 820px;
+        min-width: 820px;
+        margin: 0;
+    }
+    .pile, .tableau-column {
+        width: 90px;
+        min-width: 90px;
+        height: 120px;
+        min-height: 120px;
+        max-width: 90px;
+        max-height: 120px;
+        padding: 5px;
+    }
+    #freecells, #foundations, #tableau, #top-row {
+        gap: 8px;
+    }
+}

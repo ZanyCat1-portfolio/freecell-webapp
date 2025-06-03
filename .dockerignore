@@ -1,0 +1,33 @@
+# Ignore VCS and editor configs
+.git
+.gitignore
+.vscode
+.idea
+
+# Python virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Tests and outdated scripts
+tests/
+outdated/
+*.bak
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node/npm if present
+node_modules/

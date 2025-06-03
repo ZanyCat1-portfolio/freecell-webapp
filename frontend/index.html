@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Freecell Web - Graphical</title>
+    <link rel="stylesheet" href="static/styles.css">
+    <base href="/">
+</head>
+<body>
+  <h1>Freecell Web - Graphical</h1>
+  <div id="controls">
+    <button id="new-game-btn">New Random Game</button>
+    <input type="number" id="seed-input" placeholder="Enter seed (optional)" />
+    <button id="new-seed-btn">New Seed Game</button>
+    <button id="undo-btn">Undo</button>
+  </div>
+  <div id="message"></div>
+  <div id="board-container">
+    <div id="top-row">
+        <div id="freecells"></div>
+        <div id="foundations"></div>
+    </div>
+    <div id="tableau"></div>
+  </div>
+  <script src="static/scripts/main.js" type="module"></script>
+</body>
+</html>
