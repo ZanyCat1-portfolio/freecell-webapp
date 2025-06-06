@@ -1,6 +1,6 @@
 import { renderGame, clearSelection, highlightSelection } from './render.js';
 import { showMessage } from './ui.js';
-import { currentState, tryMove } from './state.js';
+import { currentState, getKingsOnlySetting, tryMove } from './state.js';
 import {
     canMoveStackToTableau,
     canMoveCardToFoundation,
@@ -80,7 +80,7 @@ export async function autoMoveOnDoubleClick(cardDiv) {
             for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
                 if (destColIdx === srcColIdx) continue;
                 const destCol = currentState.tableau[destColIdx];
-                if (canMoveStackToTableau(stack, destCol, currentState.freecells)) {
+                if (canMoveStackToTableau(stack, destCol, currentState.freecells, getKingsOnlySetting())) {
                     const maxMovable = computeMaxMovableStack(srcColIdx, destColIdx);
                     if (stack.length <= maxMovable) {
                         await runAnimationForMultiMove(
@@ -101,7 +101,23 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         // 2. Attempt single-card move if clicked card is at bottom
         if (cardIdx === col.length - 1) {
             const singleCard = col[cardIdx];
+            // Try foundation/freecell first
             if (await tryAutoDestinations(singleCard, location)) return;
+
+            // --- ADDITION: Try moving to tableau columns (including empty) ---
+            for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
+                if (destColIdx === srcColIdx) continue;
+                const destCol = currentState.tableau[destColIdx];
+                // Only try if the move is legal (e.g. empty column or valid stack)
+                if (canMoveStackToTableau([singleCard], destCol, currentState.freecells, getKingsOnlySetting())) {
+                    if (await tryMove(
+                        1,
+                        convertLocationToOneBased(`t${srcColIdx}`),
+                        convertLocationToOneBased(`t${destColIdx}`)
+                    )) return;
+                }
+            }
+            // --- END ADDITION ---
         }
         // 3. No move possible
         showMessage('Card cannot be auto-moved');
@@ -121,7 +137,7 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         }
         // 2. Try tableau
         for (let i = 0; i < currentState.tableau.length; i++) {
-            if (canMoveStackToTableau([card], currentState.tableau[i], currentState.freecells)) {
+            if (canMoveStackToTableau([card], currentState.tableau[i], currentState.freecells, getKingsOnlySetting())) {
                 const dest = convertLocationToOneBased(`t${i}`);
                 if (await tryMove(1, convertLocationToOneBased(location), dest)) return;
             }
@@ -140,7 +156,7 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         // Try each tableau column as a target
         for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
             const destCol = currentState.tableau[destColIdx];
-            if (canMoveStackToTableau([card], destCol, currentState.freecells)) {
+            if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting())) {
                 if (await tryMove(
                     1,
                     convertLocationToOneBased(location),
@@ -169,7 +185,7 @@ async function tryAutoDestinations(card, fromLocation, excludeFreecellIdx = null
     }
     // Tableau
     for (let i = 0; i < currentState.tableau.length; i++) {
-        if (canMoveStackToTableau([card], currentState.tableau[i], currentState.freecells)) {
+        if (canMoveStackToTableau([card], currentState.tableau[i], currentState.freecells, getKingsOnlySetting())) {
             const dest = convertLocationToOneBased(`t${i}`);
             if (await tryMove(1, convertLocationToOneBased(fromLocation), dest)) return true;
         }

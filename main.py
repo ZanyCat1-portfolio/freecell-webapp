@@ -131,12 +131,12 @@ def main():
                     print(f"Invalid card stack: {stack_reason}\n")
                     history.pop()
                     continue
-                valid_place, place_reason = game_logic.can_place_on(tableau[dest_idx], moving_stack)
+                valid_place, place_reason = game_logic.can_place_on(tableau[dest_idx], moving_stack, kings_only_on_empty_tableau=False)
                 if not valid_place:
                     print(f"Invalid move placement: {place_reason}\n")
                     history.pop()
                     continue
-                success, reason = game_logic.move_cards(tableau, num, source_idx, dest_idx, freecells)
+                success, reason = game_logic.move_cards(tableau, num, source_idx, dest_idx, freecells, kings_only_on_empty_tableau=False)
             else:
                 print("Unsupported move type.\n")
                 history.pop()

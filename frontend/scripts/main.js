@@ -7,15 +7,34 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRender();  // Any initial DOM setup, if needed
 
     // New Game
-    document.getElementById('new-game-btn').addEventListener('click', newGame);
+    document.getElementById('new-game-btn').addEventListener('click', () => {
+        const numberOfGames = 32000
+        const randomInt = Math.floor(Math.random() * numberOfGames) + 1;
+        newGame(randomInt)
+    });
     document.getElementById('new-seed-btn').addEventListener('click', () => {
         const seedInput = document.getElementById('seed-input').value;
-        const seed = seedInput ? parseInt(seedInput) : null;
-        if (seedInput && isNaN(seed)) {
-            showMessage('Seed must be a valid number');
-            return;
+        let seed = seedInput ? parseInt(seedInput) : null;
+        if (seed === null) {
+            const numberOfGames = 32000
+            seed = Math.floor(Math.random() * numberOfGames) + 1;
         }
         newGame(seed);
+    });
+
+    const seedInput = document.getElementById('seed-input');
+    seedInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/\D+/g, '');
+    })
+
+    document.getElementById('cancel-game-btn').addEventListener('click', async () => {
+        await fetch('cancel', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        // Now clear UI, re-enable checkbox, and clear current state
+        await fetchInitialState();
+        showMessage('Game cancelled.');
     });
 
     // Undo
@@ -40,3 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fetch and render initial game state
     fetchInitialState();
 });
+
+function updateSeedDisplay(seed) {
+    console.log('what?')
+    document.getElementById('seed-display').textContent = seed ? `Seed: ${seed}` : '';
+}

@@ -1,3 +1,5 @@
+import { getKingsOnlySetting } from './state.js';
+
 export const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
 export const SUIT_COLOR = { 'S': 'B', 'C': 'B', 'H': 'R', 'D': 'R' };
 
@@ -30,11 +32,16 @@ export function isValidStack(stack) {
 }
 
 // Return true if a stack can legally move onto tableauCol, considering FreeCell rules and freecells count
-export function canMoveStackToTableau(stack, tableauCol, freecells) {
+export function canMoveStackToTableau(stack, tableauCol, freecells, kingsOnlyOnEmptyTableau) {
     const emptyFreeCells = freecells.filter(cell => cell === null).length;
-    // Only allow moving onto empty tableau if moving full stack led by a King and enough freecells
     if (tableauCol.length === 0) {
-        return stack.length > 0 && stack[0].rank === 'K' && stack.length <= emptyFreeCells + 1;
+        if (kingsOnlyOnEmptyTableau) {
+            // Only allow King-led stack, and not longer than available moves
+            return stack.length > 0 && stack[0].rank === 'K' && stack.length <= emptyFreeCells + 1;
+        } else {
+            // Allow any card to empty column, but still check move limit
+            return stack.length > 0 && stack.length <= emptyFreeCells + 1;
+        }
     }
     // For non-empty tableau, check if stack[0] can be placed on destination's top card
     return stack.length > 0 && cardFollows(stack[0], tableauCol[tableauCol.length - 1]);

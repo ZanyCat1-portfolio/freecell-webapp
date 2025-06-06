@@ -9,11 +9,22 @@
 </head>
 <body>
   <h1>Freecell Web - Graphical</h1>
+  <div style="text-align: center; margin: 1em">
+    <label style="user-select: none;">
+      <input type="checkbox" id="kingsOnlyCheckbox" />
+      Only Kings on Empty Tableau
+    </label>
+    <span id="seed-display" style="margin-left:2em; font-weight: bold;">
+      Seed:
+      <span id="seed-digits" style="display:inline-block; width:5ch; text-align:left;"></span>
+    </span>
+  </div>
   <div id="controls">
     <button id="new-game-btn">New Random Game</button>
-    <input type="number" id="seed-input" placeholder="Enter seed (optional)" />
+    <input type="number" id="seed-input" placeholder="Enter seed (optional)" min="1" max="32000" style="width: 22ch" />
     <button id="new-seed-btn">New Seed Game</button>
     <button id="undo-btn">Undo</button>
+    <button id="cancel-game-btn">Cancel Game</button>
   </div>
   <div id="message"></div>
   <div id="board-container">
