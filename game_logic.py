@@ -1,4 +1,5 @@
 import cards
+import utils
 
 def can_move_stack(stack):
     for i in range(len(stack) - 1):
@@ -142,3 +143,63 @@ def move_from_foundation_to_tableau(foundations, tableau, suit, to_col_idx):
     tableau[to_col_idx].append(card)
     pile.pop()
     return True, ""
+
+import time  # Only needed for CLI if you want delays
+
+def auto_move_to_foundation(state):
+    """Auto-moves eligible cards to foundations. Each move is recorded in history."""
+    moved_any = False
+
+    while True:
+        moved = False
+
+        # Snapshot for undo
+        snapshot = {
+            'tableau': utils.copy.deepcopy(state['tableau']),
+            'freecells': utils.copy.deepcopy(state['freecells']),
+            'foundations': utils.copy.deepcopy(state['foundations']),
+            'seed': state.get('seed'),
+            'kings_only_on_empty_tableau': state.get('kings_only_on_empty_tableau', False)
+        }
+
+        snapshot['seed'] = state.get('seed')
+        snapshot['kings_only_on_empty_tableau'] = state.get('kings_only_on_empty_tableau', False)
+
+        # Tableau → Foundation
+        for idx, col in enumerate(state['tableau']):
+            if col:
+                card = col[-1]
+                suit = card.suit
+                foundation = state['foundations'][suit]
+                expected_rank = cards.RANKS[len(foundation)]
+                if card.rank == expected_rank:
+                    state['foundations'][suit].append(col.pop())
+                    state['history'].append(snapshot)
+                    moved = True
+                    moved_any = True
+                    break  # Restart outer loop
+
+        if moved:
+            continue
+
+        # Freecell → Foundation
+        for idx, cell in enumerate(state['freecells']):
+            if cell:
+                card = cell
+                suit = card.suit
+                foundation = state['foundations'][suit]
+                expected_rank = cards.RANKS[len(foundation)]
+                if card.rank == expected_rank:
+                    state['foundations'][suit].append(card)
+                    state['freecells'][idx] = None
+                    state['history'].append(snapshot)
+                    moved = True
+                    moved_any = True
+                    break
+
+        if not moved:
+            break
+
+    return moved_any
+
+

@@ -1,5 +1,6 @@
 import cards, game_logic, display, utils
 import random
+import time
 
 def create_deck():
     return [cards.Card(rank, suit) for suit in cards.SUITS for rank in cards.RANKS]
@@ -144,6 +145,14 @@ def main():
 
             if success:
                 print("Move successful!\n")
+                game_logic.auto_move_to_foundation({
+                'tableau': tableau,
+                'freecells': freecells,
+                'foundations': foundations,
+                'history': history
+            }, delay=True, is_cli=True)
+
+
             else:
                 print(f"Move failed: {reason}\n")
                 history.pop()

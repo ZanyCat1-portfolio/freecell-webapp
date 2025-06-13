@@ -121,6 +121,8 @@ def get_state():
         return jsonify({'error': 'No game in progress'}), 400
     return jsonify(serialize_state(state))
 
+
+
 @app.route('/move', methods=['POST'])
 def move():
     state = get_game_state()
@@ -158,12 +160,28 @@ def move():
     elif source_type == 'freecell' and dest_type == 'tableau':
         if num != 1:
             return jsonify({'error': 'Can only move one card at a time from freecells'}), 400
-        success, reason = game_logic.move_from_freecell_to_tableau(state['freecells'], state['tableau'], source_idx, dest_idx, kings_only_on_empty_tableau=kings_only)
+        success, reason = game_logic.move_from_freecell_to_tableau(
+            state['freecells'], state['tableau'], source_idx, dest_idx, kings_only_on_empty_tableau=kings_only
+        )
 
     elif source_type == 'foundation' and dest_type == 'tableau':
         if num != 1:
             return jsonify({'error': 'Can only move one card at a time from foundation'}), 400
         success, reason = game_logic.move_from_foundation_to_tableau(state['foundations'], state['tableau'], source_idx, dest_idx)
+
+    elif source_type == 'foundation' and dest_type == 'freecell':
+        if num != 1:
+            return jsonify({'error': 'Can only move one card at a time from foundation'}), 400
+        suit = source_idx  # source_idx is the suit string (e.g., 'h', 's', etc.)
+        card = state['foundations'][suit][-1] if state['foundations'][suit] else None
+        if not card:
+            return jsonify({'error': 'No card to move from foundation'}), 400
+        if state['freecells'][dest_idx] is not None:
+            return jsonify({'error': 'Target freecell is not empty'}), 400
+        # Perform the move
+        state['foundations'][suit].pop()
+        state['freecells'][dest_idx] = card
+        success = True
 
     elif source_type == 'tableau' and dest_type == 'foundation':
         if num != 1:
@@ -182,24 +200,39 @@ def move():
         valid_stack, stack_reason = game_logic.can_move_stack(moving_stack)
         if not valid_stack:
             return jsonify({'error': stack_reason}), 400
-        valid_place, place_reason = game_logic.can_place_on(state['tableau'][dest_idx], moving_stack, kings_only_on_empty_tableau=kings_only)
+        valid_place, place_reason = game_logic.can_place_on(
+            state['tableau'][dest_idx], moving_stack, kings_only_on_empty_tableau=kings_only
+        )
         if not valid_place:
             return jsonify({'error': place_reason}), 400
-        success, reason = game_logic.move_cards(state['tableau'], num, source_idx, dest_idx, state['freecells'], kings_only_on_empty_tableau=kings_only)
+        success, reason = game_logic.move_cards(
+            state['tableau'], num, source_idx, dest_idx, state['freecells'], kings_only_on_empty_tableau=kings_only
+        )
     else:
         return jsonify({'error': 'Unsupported move type'}), 400
 
     if not success:
-        # Undo the history append
         state['history'].pop()
         return jsonify({'error': reason}), 400
 
-    # Check win condition
+    # Set auto-move trigger only if not pulling a card from a foundation
+    state['last_action_was_manual_move'] = (source_type != 'foundation')
+
+    # Check win
     if game_logic.check_win(state['foundations']):
         return jsonify({'message': 'You won!', 'state': serialize_state(state)})
 
+    # Attempt auto-moves
+    if state.get('last_action_was_manual_move', False):
+        state['last_action_was_manual_move'] = False
+        if game_logic.check_win(state['foundations']):
+            return jsonify({'message': 'You won!', 'state': serialize_state(state)})
+
     save_game_state(state)
     return jsonify({'message': 'Move successful', 'state': serialize_state(state)})
+
+
+
 
 
 
