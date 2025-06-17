@@ -40,12 +40,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Undo
     document.getElementById('undo-btn').addEventListener('click', undoMove);
 
-    // Card and pile click (single)
+    // // Card and pile click (single)
+    // document.body.addEventListener('click', e => {
+    //     if (isAnimating.value) return;
+    //     const target = e.target.closest('.card, .pile');
+    //     if (!target) return;
+    //     selectSourceOrMove(target);
+    // });
     document.body.addEventListener('click', e => {
-        if (isAnimating.value) return;
-        const target = e.target.closest('.card, .pile');
-        if (!target) return;
-        selectSourceOrMove(target);
+        const cardOrPile = e.target.closest('.card, .pile, .freecell, .foundation');
+        if (cardOrPile) selectSourceOrMove(cardOrPile);
     });
 
     // Double click auto-move

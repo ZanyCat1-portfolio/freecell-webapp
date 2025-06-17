@@ -1,5 +1,6 @@
 import { renderGame, clearSelection } from './render.js';
 import { showMessage } from './ui.js';
+import { runAutoMoveToFoundation } from './moveLogic.js';
 
 export let currentState = null;
 
@@ -105,6 +106,7 @@ export async function tryMove(num, source, dest) {
         renderGame(json.state);
         clearSelection();
         showMessage(json.message);
+        await runAutoMoveToFoundation();
         return true;
     } else {
         showMessage('Move failed: ' + json.error);

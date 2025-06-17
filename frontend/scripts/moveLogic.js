@@ -1,13 +1,16 @@
+// moveLogic.js
 import { renderGame, clearSelection, highlightSelection } from './render.js';
 import { showMessage } from './ui.js';
 import { currentState, getKingsOnlySetting, tryMove } from './state.js';
+
 import {
     canMoveStackToTableau,
     canMoveCardToFoundation,
     isValidStack,
     convertLocationToOneBased
 } from './rules.js';
-import { runAnimationForMultiMove, DOUBLE_CLICK_ANIM_DELAY, AUTO_MOVE_ANIM_DELAY } from './animation.js';
+import { runAnimationFromFreecell, runAnimationFromTableau, DOUBLE_CLICK_ANIM_DELAY, AUTO_MOVE_ANIM_DELAY } from './animation.js';
+import { sleep } from './utils.js';
 
 export const isAnimating = { value: false };
 let selectedSource = null;
@@ -18,6 +21,10 @@ let suppressAutoMoveCard = null;
 
 
 export async function runAutoMoveToFoundation() {
+    if (document.querySelector('.selected')) {
+        return false;
+    }
+    
     let moved = false;
 
     while (true) {
@@ -35,7 +42,7 @@ export async function runAutoMoveToFoundation() {
                 canMoveCardToFoundation(card, currentState.foundations) &&
                 isSafeToAutoMove(card, currentState.foundations)
             ) {
-                await runAnimationForMultiMove(1, i, -1, currentState, AUTO_MOVE_ANIM_DELAY);
+                await runAnimationFromTableau(1, i, -1, currentState, AUTO_MOVE_ANIM_DELAY);
                 await tryMove(1, `t${i + 1}`, `d${card.suit}`);
                 found = true;
                 moved = true;
@@ -55,7 +62,8 @@ export async function runAutoMoveToFoundation() {
                 canMoveCardToFoundation(card, currentState.foundations) &&
                 isSafeToAutoMove(card, currentState.foundations)
             ) {
-                await runAnimationForMultiMove(1, 100 + i, -1, currentState, AUTO_MOVE_ANIM_DELAY);
+                console.log("how often is this if met? ", i)
+                await runAnimationFromFreecell('freecell', i, 'foundation', card.suit, currentState, AUTO_MOVE_ANIM_DELAY);
                 await tryMove(1, `f${i + 1}`, `d${card.suit}`);
                 found = true;
                 moved = true;
@@ -75,7 +83,7 @@ function isSafeToAutoMove(card, foundations) {
     const rank = rankValues[card.rank];
     const suit = card.suit;
 
-    if (rank === 1) return true;
+    if (rank === 1 || rank === 2) return true;
 
     const oppositeColorSuits = {
         H: ['C', 'S'],
@@ -113,6 +121,25 @@ export function selectSourceOrMove(target) {
     if (!location) return;
 
     if (!selectedSource) {
+        // Prevent selecting an empty tableau, freecell, or foundation as source
+        let isEmptySource = false;
+
+        if (location.startsWith('t')) {
+            const idx = parseInt(location.slice(1));
+            isEmptySource = !currentState.tableau[idx] || currentState.tableau[idx].length === 0;
+        } else if (location.startsWith('f')) {
+            const idx = parseInt(location.slice(1));
+            isEmptySource = !currentState.freecells[idx];
+        } else if (location.startsWith('d')) {
+            const suit = location.slice(1);
+            isEmptySource = !currentState.foundations[suit] || currentState.foundations[suit].length === 0;
+        }
+
+        if (isEmptySource) {
+            showMessage("Can't select an empty pile.");
+            return;
+        }
+
         const cardIdx = target.dataset.cardIdx !== undefined ? parseInt(target.dataset.cardIdx) : null;
         selectedSource = { location, element: target, cardIdx };
         highlightSelection(selectedSource.element);
@@ -140,6 +167,7 @@ export function selectSourceOrMove(target) {
     });
 }
 
+
 function isSameCard(cardA, cardB) {
     return cardA && cardB && cardA.rank === cardB.rank && cardA.suit === cardB.suit;
 }
@@ -162,7 +190,7 @@ export async function doMove(numCards, src, dest) {
         const valid = await validateMove(numCards, convertLocationToOneBased(src), convertLocationToOneBased(dest));
         if (!valid) return;
         isAnimating.value = true;
-        await runAnimationForMultiMove(numCards, srcIdx, destIdx, currentState, DOUBLE_CLICK_ANIM_DELAY);
+        await runAnimationFromTableau(numCards, srcIdx, destIdx, currentState, DOUBLE_CLICK_ANIM_DELAY);
         isAnimating.value = false;
     }
 

@@ -1,15 +1,20 @@
+# app.py
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 import cards, game_logic, utils
 import random
 import copy
 import uuid
+import sys
 
 games = {}
 
 app = Flask(__name__, static_folder="frontend", static_url_path="/static")
 app.secret_key = 'supersecretkey'  # Replace with a secure key!
 CORS(app)
+
+# Detect test mode from command line argument
+TEST_MODE = (len(sys.argv) > 1 and sys.argv[1] == 'test')
 
 def create_new_game(seed=None, kings_only_on_empty_tableau=False):
     deck = [cards.Card(rank, suit) for suit in cards.SUITS for rank in cards.RANKS]
@@ -34,6 +39,39 @@ def create_new_game(seed=None, kings_only_on_empty_tableau=False):
         'history': history,
         'seed': seed,
         'kings_only_on_empty_tableau': kings_only_on_empty_tableau
+    }
+
+def create_test_game():
+    tableau = [
+        [cards.Card('J', 'C'), cards.Card('10', 'D'), cards.Card('9', 'C'), cards.Card('K', 'H')],
+        [cards.Card('10', 'S'), cards.Card('6', 'S'), cards.Card('9', 'H')],
+        [],
+        [cards.Card('10', 'H'), cards.Card('K', 'C'), cards.Card('A', 'C'), cards.Card('J', 'S'),
+         cards.Card('2', 'D'), cards.Card('5', 'D'), cards.Card('9', 'S'), cards.Card('8', 'D'),
+         cards.Card('7', 'C'), cards.Card('6', 'H'), cards.Card('5', 'S'), cards.Card('4', 'D'), cards.Card('3', 'C')],
+        [cards.Card('3', 'S'), cards.Card('5', 'C'), cards.Card('K', 'S'), cards.Card('Q', 'H')],
+        [cards.Card('K', 'D'), cards.Card('Q', 'C'), cards.Card('J', 'D'), cards.Card('10', 'C'),
+         cards.Card('9', 'D'), cards.Card('8', 'S'), cards.Card('7', 'D'), cards.Card('6', 'C'),
+         cards.Card('5', 'H'), cards.Card('4', 'S'), cards.Card('3', 'D')],
+        [cards.Card('8', 'C')],
+        [cards.Card('Q', 'S'), cards.Card('8', 'H'), cards.Card('7', 'S'),
+         cards.Card('6', 'D'), cards.Card('7', 'H'), cards.Card('J', 'H'), cards.Card('2', 'C')]
+    ]
+    freecells = [cards.Card('Q', 'D'), cards.Card('4', 'C'), None, None]
+    foundations = {
+        'H': [cards.Card('A', 'H'), cards.Card('2', 'H'), cards.Card('3', 'H'), cards.Card('4', 'H')],
+        'D': [cards.Card('A', 'D')],
+        'C': [],
+        'S': [cards.Card('A', 'S'), cards.Card('2', 'S')]
+    }
+    history = []
+    return {
+        'tableau': tableau,
+        'freecells': freecells,
+        'foundations': foundations,
+        'history': history,
+        'seed': 'test',
+        'kings_only_on_empty_tableau': False
     }
 
 def serialize_card(card):
@@ -78,7 +116,11 @@ def ensure_session_id():
 
 def get_game_state():
     sid = session['session_id']
-    return games.get(sid)
+    state = games.get(sid)
+    if state is None and TEST_MODE:
+        state = create_test_game()
+        games[sid] = state
+    return state
 
 def save_game_state(state):
     sid = session['session_id']
@@ -86,6 +128,10 @@ def save_game_state(state):
 
 @app.route('/newgame', methods=['POST'])
 def new_game():
+    if TEST_MODE:
+        # Don't start a random game in test mode
+        return jsonify({'error': 'Cannot start new game in test mode.'}), 400
+
     data = request.json or {}
     seed = data.get('seed')
     kings_only = data.get('kings_only_on_empty_tableau', False)
@@ -121,8 +167,6 @@ def get_state():
         return jsonify({'error': 'No game in progress'}), 400
     return jsonify(serialize_state(state))
 
-
-
 @app.route('/move', methods=['POST'])
 def move():
     state = get_game_state()
@@ -143,73 +187,13 @@ def move():
     if source_type is None or dest_type is None:
         return jsonify({'error': 'Invalid source or destination'}), 400
 
-    # Save only the relevant state
+    # Save undo state before mutation
     state['history'].append(deep_copy_game_for_history(state))
     print("Undo history length:", len(state['history']))
 
-    success = False
-    reason = ''
-
-    kings_only = state.get('kings_only_on_empty_tableau', False)
-
-    if source_type == 'tableau' and dest_type == 'freecell':
-        if num != 1:
-            return jsonify({'error': 'Can only move one card at a time to freecells'}), 400
-        success, reason = game_logic.move_to_freecell(state['tableau'], state['freecells'], source_idx, dest_idx)
-
-    elif source_type == 'freecell' and dest_type == 'tableau':
-        if num != 1:
-            return jsonify({'error': 'Can only move one card at a time from freecells'}), 400
-        success, reason = game_logic.move_from_freecell_to_tableau(
-            state['freecells'], state['tableau'], source_idx, dest_idx, kings_only_on_empty_tableau=kings_only
-        )
-
-    elif source_type == 'foundation' and dest_type == 'tableau':
-        if num != 1:
-            return jsonify({'error': 'Can only move one card at a time from foundation'}), 400
-        success, reason = game_logic.move_from_foundation_to_tableau(state['foundations'], state['tableau'], source_idx, dest_idx)
-
-    elif source_type == 'foundation' and dest_type == 'freecell':
-        if num != 1:
-            return jsonify({'error': 'Can only move one card at a time from foundation'}), 400
-        suit = source_idx  # source_idx is the suit string (e.g., 'h', 's', etc.)
-        card = state['foundations'][suit][-1] if state['foundations'][suit] else None
-        if not card:
-            return jsonify({'error': 'No card to move from foundation'}), 400
-        if state['freecells'][dest_idx] is not None:
-            return jsonify({'error': 'Target freecell is not empty'}), 400
-        # Perform the move
-        state['foundations'][suit].pop()
-        state['freecells'][dest_idx] = card
-        success = True
-
-    elif source_type == 'tableau' and dest_type == 'foundation':
-        if num != 1:
-            return jsonify({'error': 'Can only move one card at a time to foundations'}), 400
-        success, reason = game_logic.move_to_foundation_from_tableau(state['tableau'], state['foundations'], source_idx, dest_idx)
-
-    elif source_type == 'freecell' and dest_type == 'foundation':
-        if num != 1:
-            return jsonify({'error': 'Can only move one card at a time from freecells to foundations'}), 400
-        success, reason = game_logic.move_from_freecell_to_foundation(state['freecells'], state['foundations'], source_idx, dest_idx)
-
-    elif source_type == 'tableau' and dest_type == 'tableau':
-        if num > len(state['tableau'][source_idx]):
-            return jsonify({'error': 'Not enough cards to move'}), 400
-        moving_stack = state['tableau'][source_idx][-num:]
-        valid_stack, stack_reason = game_logic.can_move_stack(moving_stack)
-        if not valid_stack:
-            return jsonify({'error': stack_reason}), 400
-        valid_place, place_reason = game_logic.can_place_on(
-            state['tableau'][dest_idx], moving_stack, kings_only_on_empty_tableau=kings_only
-        )
-        if not valid_place:
-            return jsonify({'error': place_reason}), 400
-        success, reason = game_logic.move_cards(
-            state['tableau'], num, source_idx, dest_idx, state['freecells'], kings_only_on_empty_tableau=kings_only
-        )
-    else:
-        return jsonify({'error': 'Unsupported move type'}), 400
+    success, reason = game_logic.dispatch_move(
+        state, num, source_type, source_idx, dest_type, dest_idx, validate_only=False
+    )
 
     if not success:
         state['history'].pop()
@@ -231,11 +215,6 @@ def move():
     save_game_state(state)
     return jsonify({'message': 'Move successful', 'state': serialize_state(state)})
 
-
-
-
-
-
 @app.route('/validate-move', methods=['POST'])
 def validate_move():
     state = get_game_state()
@@ -247,59 +226,23 @@ def validate_move():
     source = data.get('source')
     dest = data.get('dest')
 
-    # Parse source/dest just like in /move
     source_type, source_idx = utils.parse_location(source)
     dest_type, dest_idx = utils.parse_location(dest)
     if source_type is None or dest_type is None:
         return jsonify({'valid': False, 'error': 'Invalid source or destination'}), 400
 
-    # Now check the move, but do NOT change the game state!
-    try:
-        kings_only = state.get('kings_only_on_empty_tableau', False)
-        # All logic duplicated from /move, but only validation (not actual move/history).
-        if source_type == 'tableau' and dest_type == 'freecell':
-            if num != 1:
-                return jsonify({'valid': False, 'error': 'Can only move one card at a time to freecells'}), 400
-            success, reason = game_logic.move_to_freecell(
-                copy.deepcopy(state['tableau']), 
-                copy.deepcopy(state['freecells']), 
-                source_idx, dest_idx
-            )
-        elif source_type == 'freecell' and dest_type == 'tableau':
-            if num != 1:
-                return jsonify({'error': 'Can only move one card at a time from freecells'}), 400
-            success, reason = game_logic.move_from_freecell_to_tableau(
-                state['freecells'], state['tableau'], source_idx, dest_idx, kings_only_on_empty_tableau=kings_only
-            )
-        # ...repeat for each move type, always using deepcopy of state...
-        elif source_type == 'tableau' and dest_type == 'tableau':
-            tableau = copy.deepcopy(state['tableau'])
-            freecells = copy.deepcopy(state['freecells'])
-            if num > len(tableau[source_idx]):
-                return jsonify({'valid': False, 'error': 'Not enough cards to move'}), 400
-            moving_stack = tableau[source_idx][-num:]
-            valid_stack, stack_reason = game_logic.can_move_stack(moving_stack)
-            if not valid_stack:
-                return jsonify({'valid': False, 'error': stack_reason}), 400
-            valid_place, place_reason = game_logic.can_place_on(tableau[dest_idx], moving_stack, kings_only_on_empty_tableau=kings_only)
-            if not valid_place:
-                return jsonify({'valid': False, 'error': place_reason}), 400
-            # Check for multi-move rules here, just like your move_cards logic:
-            success, reason = game_logic.move_cards(tableau, num, source_idx, dest_idx, freecells, kings_only_on_empty_tableau=kings_only)
-        else:
-            return jsonify({'valid': False, 'error': 'Unsupported move type'}), 400
+    # Use a deepcopy so we never mutate the real state during validation
+    import copy
+    state_copy = copy.deepcopy(state)
 
-        if not success:
-            return jsonify({'valid': False, 'error': reason}), 400
+    success, reason = game_logic.dispatch_move(
+        state_copy, num, source_type, source_idx, dest_type, dest_idx, validate_only=True
+    )
 
+    if success:
         return jsonify({'valid': True}), 200
-
-    except Exception as e:
-        return jsonify({'valid': False, 'error': str(e)}), 400
-
-
-
-
+    else:
+        return jsonify({'valid': False, 'error': reason}), 400
 
 @app.route('/undo', methods=['POST'])
 def undo():
@@ -321,11 +264,9 @@ def undo():
     print("Undo performed, history length now:", len(state['history']))
     return jsonify({'message': 'Undo successful', 'state': serialize_state(state)})
 
-
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
-
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=True)

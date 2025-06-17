@@ -1,13 +1,14 @@
 import { cardImageFile } from './ui.js';
+import { currentState } from './state.js'
 
-export let currentState = null;
+export let gameState = null;
 
 export function setupRender() {
     // Optional: put any code needed for the initial setup of containers here.
 }
 
 export function renderGame(state, changedCols = null) {
-    currentState = state;
+    gameState = state;
     renderFreecells(state.freecells);
     renderFoundations(state.foundations);
     renderTableau(state.tableau, changedCols);
@@ -15,7 +16,7 @@ export function renderGame(state, changedCols = null) {
 
 export function renderTableauWithFakeFreecells(animTableau, fakeFreecells) {
     renderFreecells(fakeFreecells);
-    renderFoundations(currentState.foundations);
+    renderFoundations(gameState.foundations);
     renderTableau(animTableau);
 }
 

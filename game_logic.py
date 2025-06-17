@@ -1,3 +1,4 @@
+# game_logic.py:
 import cards
 import utils
 
@@ -36,9 +37,7 @@ def can_place_on_foundation(foundation_pile, card):
         return False, "Card rank must be one higher than foundation top."
     return True, ""
 
-
-
-def move_cards(tableau, num_cards, from_col_idx, to_col_idx, freecells=None, kings_only_on_empty_tableau=False):
+def move_cards(tableau, num_cards, from_col_idx, to_col_idx, freecells=None, kings_only_on_empty_tableau=False, validate_only=False):
     from_col = tableau[from_col_idx]
     to_col = tableau[to_col_idx]
     if num_cards > len(from_col):
@@ -47,47 +46,44 @@ def move_cards(tableau, num_cards, from_col_idx, to_col_idx, freecells=None, kin
     valid_stack, reason = can_move_stack(moving_stack)
     if not valid_stack:
         return False, reason
-    valid_place, reason = can_place_on(to_col, moving_stack, kings_only_on_empty_tableau=False)
+    valid_place, reason = can_place_on(to_col, moving_stack, kings_only_on_empty_tableau=kings_only_on_empty_tableau)
     if not valid_place:
         return False, reason
 
     if freecells is not None:
         empty_freecells = sum(1 for c in freecells if c is None)
-        bottom_card = moving_stack[0]
         empty_tableaus = sum(
             1 for i, col in enumerate(tableau)
             if len(col) == 0 and i != from_col_idx and i != to_col_idx
         )
-        if len(to_col) == 0:
-            if kings_only_on_empty_tableau and bottom_card.rank != 'K':
-                return False, "Only Kings can be moved to empty tableau columns."
-            max_movable = empty_freecells + 1
-        else:
-            max_movable = empty_freecells + 1
+        max_movable = (empty_freecells + 1) * (empty_tableaus + 1)
+
+        if kings_only_on_empty_tableau and len(to_col) == 0 and moving_stack[0].rank != 'K':
+            return False, "Only Kings can be moved to empty tableau columns."
 
         if num_cards > max_movable:
-            return False, f"You can only move up to {max_movable} cards at once, based on available freecells."
+            return False, f"You can only move up to {max_movable} cards at once, based on available freecells and empty tableau columns."
 
+    if validate_only:
+        return True, ""
     to_col.extend(moving_stack)
     del from_col[-num_cards:]
     return True, ""
 
 
-
-
-def move_to_freecell(tableau, freecells, from_col_idx, freecell_idx):
+def move_to_freecell(tableau, freecells, from_col_idx, freecell_idx, validate_only=False):
     col = tableau[from_col_idx]
     if not col:
         return False, "Source tableau column is empty."
     if freecells[freecell_idx] is not None:
         return False, "Selected freecell is not empty."
+    if validate_only:
+        return True, ""
     card = col.pop()
     freecells[freecell_idx] = card
     return True, ""
 
-def move_from_freecell_to_tableau(freecells, tableau, freecell_idx, to_col_idx, kings_only_on_empty_tableau=False):
-    print("DEBUG FUNC: kings_only_on_empty_tableau =", kings_only_on_empty_tableau)
-
+def move_from_freecell_to_tableau(freecells, tableau, freecell_idx, to_col_idx, kings_only_on_empty_tableau=False, validate_only=False):
     card = freecells[freecell_idx]
     if card is None:
         return False, "Selected freecell is empty."
@@ -98,11 +94,13 @@ def move_from_freecell_to_tableau(freecells, tableau, freecell_idx, to_col_idx, 
     )
     if not valid_place:
         return False, reason
+    if validate_only:
+        return True, ""
     tableau[to_col_idx].append(card)
     freecells[freecell_idx] = None
     return True, ""
 
-def move_to_foundation_from_tableau(tableau, foundations, from_col_idx, suit):
+def move_to_foundation_from_tableau(tableau, foundations, from_col_idx, suit, validate_only=False):
     col = tableau[from_col_idx]
     if not col:
         return False, "Source tableau column is empty."
@@ -112,11 +110,13 @@ def move_to_foundation_from_tableau(tableau, foundations, from_col_idx, suit):
     valid_place, reason = can_place_on_foundation(foundations[suit], card)
     if not valid_place:
         return False, reason
+    if validate_only:
+        return True, ""
     foundations[suit].append(card)
     col.pop()
     return True, ""
 
-def move_from_freecell_to_foundation(freecells, foundations, freecell_idx, suit):
+def move_from_freecell_to_foundation(freecells, foundations, freecell_idx, suit, validate_only=False):
     card = freecells[freecell_idx]
     if card is None:
         return False, "Selected freecell is empty."
@@ -125,6 +125,8 @@ def move_from_freecell_to_foundation(freecells, foundations, freecell_idx, suit)
     valid_place, reason = can_place_on_foundation(foundations[suit], card)
     if not valid_place:
         return False, reason
+    if validate_only:
+        return True, ""
     foundations[suit].append(card)
     freecells[freecell_idx] = None
     return True, ""
@@ -132,7 +134,7 @@ def move_from_freecell_to_foundation(freecells, foundations, freecell_idx, suit)
 def check_win(foundations):
     return all(len(pile) == 13 for pile in foundations.values())
 
-def move_from_foundation_to_tableau(foundations, tableau, suit, to_col_idx):
+def move_from_foundation_to_tableau(foundations, tableau, suit, to_col_idx, validate_only=False):
     pile = foundations[suit]
     if not pile:
         return False, "Selected foundation pile is empty."
@@ -140,6 +142,8 @@ def move_from_foundation_to_tableau(foundations, tableau, suit, to_col_idx):
     valid_place, reason = can_place_on(tableau[to_col_idx], [card], kings_only_on_empty_tableau=False)
     if not valid_place:
         return False, reason
+    if validate_only:
+        return True, ""
     tableau[to_col_idx].append(card)
     pile.pop()
     return True, ""
@@ -202,4 +206,75 @@ def auto_move_to_foundation(state):
 
     return moved_any
 
+def dispatch_move(state, num, source_type, source_idx, dest_type, dest_idx, validate_only=False):
+    kings_only = state.get('kings_only_on_empty_tableau', False)
 
+    # TABLEAU → FREECELL
+    if source_type == 'tableau' and dest_type == 'freecell':
+        if num != 1:
+            return False, 'Can only move one card at a time to freecells'
+        return move_to_freecell(state['tableau'], state['freecells'], source_idx, dest_idx, validate_only=validate_only)
+
+    # FREECELL → TABLEAU
+    elif source_type == 'freecell' and dest_type == 'tableau':
+        if num != 1:
+            return False, 'Can only move one card at a time from freecells'
+        return move_from_freecell_to_tableau(
+            state['freecells'], state['tableau'], source_idx, dest_idx,
+            kings_only_on_empty_tableau=kings_only, validate_only=validate_only
+        )
+
+    # FOUNDATION → TABLEAU
+    elif source_type == 'foundation' and dest_type == 'tableau':
+        if num != 1:
+            return False, 'Can only move one card at a time from foundation'
+        return move_from_foundation_to_tableau(
+            state['foundations'], state['tableau'], source_idx, dest_idx,
+            validate_only=validate_only
+        )
+
+    # FOUNDATION → FREECELL
+    elif source_type == 'foundation' and dest_type == 'freecell':
+        if num != 1:
+            return False, 'Can only move one card at a time from foundation'
+        suit = source_idx  # If this is a string (e.g., 'h'), it matches your style
+        card = state['foundations'][suit][-1] if state['foundations'][suit] else None
+        if not card:
+            return False, 'No card to move from foundation'
+        if state['freecells'][dest_idx] is not None:
+            return False, 'Target freecell is not empty'
+        if validate_only:
+            return True, ''
+        state['foundations'][suit].pop()
+        state['freecells'][dest_idx] = card
+        return True, ''
+
+    # TABLEAU → FOUNDATION
+    elif source_type == 'tableau' and dest_type == 'foundation':
+        if num != 1:
+            return False, 'Can only move one card at a time to foundations'
+        suit = dest_idx  # Assumes dest_idx is the suit string
+        return move_to_foundation_from_tableau(
+            state['tableau'], state['foundations'], source_idx, suit, validate_only=validate_only
+        )
+
+    # FREECELL → FOUNDATION
+    elif source_type == 'freecell' and dest_type == 'foundation':
+        if num != 1:
+            return False, 'Can only move one card at a time from freecells to foundations'
+        suit = dest_idx
+        return move_from_freecell_to_foundation(
+            state['freecells'], state['foundations'], source_idx, suit, validate_only=validate_only
+        )
+
+    # TABLEAU → TABLEAU
+    elif source_type == 'tableau' and dest_type == 'tableau':
+        if num > len(state['tableau'][source_idx]):
+            return False, 'Not enough cards to move'
+        return move_cards(
+            state['tableau'], num, source_idx, dest_idx, state.get('freecells'),
+            kings_only_on_empty_tableau=kings_only, validate_only=validate_only
+        )
+
+    else:
+        return False, 'Unsupported move type'
