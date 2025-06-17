@@ -1,8 +1,10 @@
 import { renderGame, clearSelection } from './render.js';
 import { showMessage } from './ui.js';
-import { runAutoMoveToFoundation } from './moveLogic.js';
+import { runAutoMoveToFoundation, resetSelection } from './moveLogic.js';
 
 export let currentState = null;
+export const state = { autoMoveEnabled: true };
+
 
 // Helper to always keep setting in sync
 export function getKingsOnlySetting() {
@@ -17,6 +19,7 @@ export async function fetchInitialState() {
     if (res.ok) {
         const json = await res.json();
         currentState = json;
+        console.log('currentState: ', currentState)
 
         if ('kings_only_on_empty_tableau' in json) {
             document.getElementById('kingsOnlyCheckbox').checked = !!json.kings_only_on_empty_tableau;
@@ -25,7 +28,7 @@ export async function fetchInitialState() {
         document.getElementById('kingsOnlyCheckbox').disabled = true;
 
         renderGame(json);
-        clearSelection();
+        resetSelection();
         showMessage('');
     } else {
         showMessage('No game in progress. Start a new game!');
@@ -84,7 +87,7 @@ export async function undoMove() {
             document.getElementById('kingsOnlyCheckbox').checked = !!json.state.kings_only_on_empty_tableau;
         }
         renderGame(json.state);
-        clearSelection();
+        resetSelection();
         showMessage(json.message);
     } else {
         showMessage('Undo failed: ' + json.error);
@@ -104,13 +107,13 @@ export async function tryMove(num, source, dest) {
             document.getElementById('kingsOnlyCheckbox').checked = !!json.state.kings_only_on_empty_tableau;
         }
         renderGame(json.state);
-        clearSelection();
+        resetSelection();
         showMessage(json.message);
         await runAutoMoveToFoundation();
         return true;
     } else {
         showMessage('Move failed: ' + json.error);
-        clearSelection();
+        resetSelection();
         return false;
     }
 }

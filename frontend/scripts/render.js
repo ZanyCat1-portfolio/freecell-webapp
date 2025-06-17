@@ -1,5 +1,6 @@
 import { cardImageFile } from './ui.js';
 import { currentState } from './state.js'
+import { resetSelection } from './moveLogic.js';
 
 export let gameState = null;
 
@@ -25,7 +26,9 @@ export function highlightSelection(element) {
     element.classList.add('selected');
 }
 export function clearSelection() {
-    document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    // document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    const el = document.querySelector('.selected');
+    if (el) el.classList.remove('selected');
 }
 
 function renderFreecells(freecells) {

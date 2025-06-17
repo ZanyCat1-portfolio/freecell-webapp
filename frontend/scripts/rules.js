@@ -32,20 +32,28 @@ export function isValidStack(stack) {
 }
 
 // Return true if a stack can legally move onto tableauCol, considering FreeCell rules and freecells count
-export function canMoveStackToTableau(stack, tableauCol, freecells, kingsOnlyOnEmptyTableau) {
+export function canMoveStackToTableau(
+    stack, tableauCol, freecells, kingsOnlyOnEmptyTableau, tableau, srcIdx, destIdx
+) {
     const emptyFreeCells = freecells.filter(cell => cell === null).length;
+    const emptyTableaus = tableau.filter(
+        (col, idx) => col.length === 0 && idx !== srcIdx && idx !== destIdx
+    ).length;
+    const maxMovable = (emptyFreeCells + 1) * (emptyTableaus + 1);
+
     if (tableauCol.length === 0) {
         if (kingsOnlyOnEmptyTableau) {
             // Only allow King-led stack, and not longer than available moves
-            return stack.length > 0 && stack[0].rank === 'K' && stack.length <= emptyFreeCells + 1;
+            return stack.length > 0 && stack[0].rank === 'K' && stack.length <= maxMovable;
         } else {
             // Allow any card to empty column, but still check move limit
-            return stack.length > 0 && stack.length <= emptyFreeCells + 1;
+            return stack.length > 0 && stack.length <= maxMovable;
         }
     }
     // For non-empty tableau, check if stack[0] can be placed on destination's top card
-    return stack.length > 0 && cardFollows(stack[0], tableauCol[tableauCol.length - 1]);
+    return stack.length > 0 && cardFollows(stack[0], tableauCol[tableauCol.length - 1]) && stack.length <= maxMovable;
 }
+
 
 // Utility: convert location string to one-based index for backend/API
 export function convertLocationToOneBased(loc) {

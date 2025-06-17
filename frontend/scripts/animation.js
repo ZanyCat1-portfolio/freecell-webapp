@@ -11,8 +11,6 @@ export async function runAnimationFromTableau(numCards, srcIdx, destIdx, state, 
 
     // Helper for "how many cards could be moved in one supermove"
     const maxMovable = countMaxMovable(animTableau, animFreecells, srcIdx, destIdx);
-    console.log("max movable is ", maxMovable)
-    console.log("numCards is ", numCards)
     if (numCards > maxMovable) {
         throw new Error('Not enough freecells or empty columns to move that many cards!');
     }

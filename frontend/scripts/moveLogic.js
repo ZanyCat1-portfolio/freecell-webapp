@@ -11,70 +11,59 @@ import {
 } from './rules.js';
 import { runAnimationFromFreecell, runAnimationFromTableau, DOUBLE_CLICK_ANIM_DELAY, AUTO_MOVE_ANIM_DELAY } from './animation.js';
 import { sleep } from './utils.js';
+import { state } from './state.js';
 
 export const isAnimating = { value: false };
 let selectedSource = null;
 
+export function resetSelection() {
+    selectedSource = null;
+    clearSelection();
+}
 
 let suppressAutoMoveCard = null;
 
 
 
 export async function runAutoMoveToFoundation() {
-    if (document.querySelector('.selected')) {
-        return false;
-    }
-    
-    let moved = false;
+    if (!state.autoMoveEnabled) return false;
 
-    while (true) {
-        let found = false;
+    // Tableau top cards
+    for (let i = 0; i < currentState.tableau.length; i++) {
+        const col = currentState.tableau[i];
+        if (col.length === 0) continue;
+        const card = col[col.length - 1];
 
-        // Tableau top cards
-        for (let i = 0; i < currentState.tableau.length; i++) {
-            const col = currentState.tableau[i];
-            if (col.length === 0) continue;
-            const card = col[col.length - 1];
-
-            if (
-                card &&
-                (!suppressAutoMoveCard || !isSameCard(card, suppressAutoMoveCard)) &&
-                canMoveCardToFoundation(card, currentState.foundations) &&
-                isSafeToAutoMove(card, currentState.foundations)
-            ) {
-                await runAnimationFromTableau(1, i, -1, currentState, AUTO_MOVE_ANIM_DELAY);
-                await tryMove(1, `t${i + 1}`, `d${card.suit}`);
-                found = true;
-                moved = true;
-                break;
-            }
+        if (
+            card &&
+            (!suppressAutoMoveCard || !isSameCard(card, suppressAutoMoveCard)) &&
+            canMoveCardToFoundation(card, currentState.foundations) &&
+            isSafeToAutoMove(card, currentState.foundations)
+        ) {
+            await runAnimationFromTableau(1, i, -1, currentState, AUTO_MOVE_ANIM_DELAY);
+            await tryMove(1, `t${i + 1}`, `d${card.suit}`);
+            return true;
         }
-
-        if (found) continue;
-
-        // Freecell cards
-        for (let i = 0; i < currentState.freecells.length; i++) {
-            const card = currentState.freecells[i];
-            if (!card) continue;
-
-            if (
-                (!suppressAutoMoveCard || !isSameCard(card, suppressAutoMoveCard)) &&
-                canMoveCardToFoundation(card, currentState.foundations) &&
-                isSafeToAutoMove(card, currentState.foundations)
-            ) {
-                console.log("how often is this if met? ", i)
-                await runAnimationFromFreecell('freecell', i, 'foundation', card.suit, currentState, AUTO_MOVE_ANIM_DELAY);
-                await tryMove(1, `f${i + 1}`, `d${card.suit}`);
-                found = true;
-                moved = true;
-                break;
-            }
-        }
-
-        if (!found) break;
     }
 
-    return moved;
+    // Freecell cards
+    for (let i = 0; i < currentState.freecells.length; i++) {
+        const card = currentState.freecells[i];
+        if (!card) continue;
+
+        if (
+            (!suppressAutoMoveCard || !isSameCard(card, suppressAutoMoveCard)) &&
+            canMoveCardToFoundation(card, currentState.foundations) &&
+            isSafeToAutoMove(card, currentState.foundations)
+        ) {
+            await runAnimationFromFreecell('freecell', i, 'foundation', card.suit, currentState, AUTO_MOVE_ANIM_DELAY);
+            await tryMove(1, `f${i + 1}`, `d${card.suit}`);
+            return true;
+        }
+    }
+
+    // No auto-move performed
+    return false;
 }
 
 function isSafeToAutoMove(card, foundations) {
@@ -150,7 +139,7 @@ export function selectSourceOrMove(target) {
     }
 
     if (selectedSource.location === location) {
-        clearSelection();
+        resetSelection();
         selectedSource = null;
         return;
     }
@@ -162,8 +151,8 @@ export function selectSourceOrMove(target) {
     }
 
     doMove(numCards, selectedSource.location, location).finally(() => {
-        clearSelection();
-        selectedSource = null;
+        resetSelection();
+        // selectedSource = null;
     });
 }
 
@@ -195,7 +184,7 @@ export async function doMove(numCards, src, dest) {
     }
 
     await tryMove(numCards, convertLocationToOneBased(src), convertLocationToOneBased(dest));
-    await runAutoMoveToFoundation();
+    // await runAutoMoveToFoundation();
 }
 
 
@@ -203,10 +192,12 @@ export async function autoMoveOnDoubleClick(cardDiv) {
     const location = cardDiv.dataset.location;
     if (!location) return;
 
+    const tableau = currentState.tableau;
+
     if (location.startsWith('t')) {
         const srcColIdx = parseInt(location.slice(1));
         const cardIdx = cardDiv.dataset.cardIdx ? parseInt(cardDiv.dataset.cardIdx) : null;
-        const col = currentState.tableau[srcColIdx];
+        const col = tableau[srcColIdx];
         if (!col || col.length === 0 || cardIdx === null) return;
 
         const stack = col.slice(cardIdx);
@@ -214,29 +205,23 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         // Try multi-card stack move
         if (isValidStack(stack) && stack.length > 1) {
             // Pass 1: occupied tableau columns
-            for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
+            for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
                 if (destColIdx === srcColIdx) continue;
-                const destCol = currentState.tableau[destColIdx];
+                const destCol = tableau[destColIdx];
                 if (destCol.length === 0) continue;
-                if (canMoveStackToTableau(stack, destCol, currentState.freecells, getKingsOnlySetting())) {
-                    const maxMovable = computeMaxMovableStack(srcColIdx, destColIdx);
-                    if (stack.length <= maxMovable) {
-                        await doMove(stack.length, `t${srcColIdx}`, `t${destColIdx}`);
-                        return;
-                    }
+                if (canMoveStackToTableau(stack, destCol, currentState.freecells, getKingsOnlySetting(), tableau, srcColIdx, destColIdx)) {
+                    await doMove(stack.length, `t${srcColIdx}`, `t${destColIdx}`);
+                    return;
                 }
             }
             // Pass 2: empty tableau columns
-            for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
+            for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
                 if (destColIdx === srcColIdx) continue;
-                const destCol = currentState.tableau[destColIdx];
+                const destCol = tableau[destColIdx];
                 if (destCol.length !== 0) continue;
-                if (canMoveStackToTableau(stack, destCol, currentState.freecells, getKingsOnlySetting())) {
-                    const maxMovable = computeMaxMovableStack(srcColIdx, destColIdx);
-                    if (stack.length <= maxMovable) {
-                        await doMove(stack.length, `t${srcColIdx}`, `t${destColIdx}`);
-                        return;
-                    }
+                if (canMoveStackToTableau(stack, destCol, currentState.freecells, getKingsOnlySetting(), tableau, srcColIdx, destColIdx)) {
+                    await doMove(stack.length, `t${srcColIdx}`, `t${destColIdx}`);
+                    return;
                 }
             }
         }
@@ -244,25 +229,25 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         // Try single-card move
         if (cardIdx === col.length - 1) {
             const singleCard = col[cardIdx];
-            if (await tryAutoDestinations(singleCard, `t${srcColIdx}`)) return;
+            if (await tryAutoDestinations(singleCard, `t${srcColIdx}`, tableau, srcColIdx)) return;
 
             // Pass 1: occupied tableau columns
-            for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
+            for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
                 if (destColIdx === srcColIdx) continue;
-                const destCol = currentState.tableau[destColIdx];
+                const destCol = tableau[destColIdx];
                 if (destCol.length === 0) continue;
-                if (canMoveStackToTableau([singleCard], destCol, currentState.freecells, getKingsOnlySetting())) {
+                if (canMoveStackToTableau([singleCard], destCol, currentState.freecells, getKingsOnlySetting(), tableau, srcColIdx, destColIdx)) {
                     await doMove(1, `t${srcColIdx}`, `t${destColIdx}`);
                     return;
                 }
             }
 
             // Pass 2: empty tableau columns
-            for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
+            for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
                 if (destColIdx === srcColIdx) continue;
-                const destCol = currentState.tableau[destColIdx];
+                const destCol = tableau[destColIdx];
                 if (destCol.length !== 0) continue;
-                if (canMoveStackToTableau([singleCard], destCol, currentState.freecells, getKingsOnlySetting())) {
+                if (canMoveStackToTableau([singleCard], destCol, currentState.freecells, getKingsOnlySetting(), tableau, srcColIdx, destColIdx)) {
                     await doMove(1, `t${srcColIdx}`, `t${destColIdx}`);
                     return;
                 }
@@ -272,7 +257,6 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         showMessage('Card cannot be auto-moved');
         return;
     }
-
 
     if (location.startsWith('f')) {
         const fcIdx = parseInt(location.slice(1));
@@ -286,21 +270,21 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         }
 
         // Pass 1: occupied tableau columns
-        for (let i = 0; i < currentState.tableau.length; i++) {
-            const col = currentState.tableau[i];
-            if (col.length === 0) continue;
-            if (canMoveStackToTableau([card], col, currentState.freecells, getKingsOnlySetting())) {
-                await doMove(1, `f${fcIdx}`, `t${i}`);
+        for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
+            const destCol = tableau[destColIdx];
+            if (destCol.length === 0) continue;
+            if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting(), tableau, fcIdx, destColIdx)) {
+                await doMove(1, `f${fcIdx}`, `t${destColIdx}`);
                 return;
             }
         }
 
         // Pass 2: empty tableau columns
-        for (let i = 0; i < currentState.tableau.length; i++) {
-            const col = currentState.tableau[i];
-            if (col.length !== 0) continue;
-            if (canMoveStackToTableau([card], col, currentState.freecells, getKingsOnlySetting())) {
-                await doMove(1, `f${fcIdx}`, `t${i}`);
+        for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
+            const destCol = tableau[destColIdx];
+            if (destCol.length !== 0) continue;
+            if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting(), tableau, fcIdx, destColIdx)) {
+                await doMove(1, `f${fcIdx}`, `t${destColIdx}`);
                 return;
             }
         }
@@ -309,16 +293,15 @@ export async function autoMoveOnDoubleClick(cardDiv) {
         return;
     }
 
-
     if (location.startsWith('d')) {
         const suit = location.slice(1);
         const pile = currentState.foundations[suit];
         if (!pile || pile.length === 0) return;
         const card = pile[pile.length - 1];
 
-        for (let destColIdx = 0; destColIdx < currentState.tableau.length; destColIdx++) {
-            const destCol = currentState.tableau[destColIdx];
-            if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting())) {
+        for (let destColIdx = 0; destColIdx < tableau.length; destColIdx++) {
+            const destCol = tableau[destColIdx];
+            if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting(), tableau, null, destColIdx)) {
                 await doMove(1, `d${suit}`, `t${destColIdx}`);
                 return;
             }
@@ -329,15 +312,8 @@ export async function autoMoveOnDoubleClick(cardDiv) {
     }
 }
 
-function computeMaxMovableStack(srcColIdx, destColIdx) {
-    const emptyFreecells = currentState.freecells.filter(c => c === null).length;
-    const emptyCols = currentState.tableau.filter(
-        (c, i) => c.length === 0 && i !== srcColIdx && i !== destColIdx
-    ).length;
-    return (emptyFreecells + 1) * (emptyCols + 1);
-}
-
-async function tryAutoDestinations(card, fromLocation, excludeFreecellIdx = null) {
+// Refactor tryAutoDestinations to accept tableau, srcIdx, and pass destColIdx as i
+async function tryAutoDestinations(card, fromLocation, tableau, srcIdx, excludeFreecellIdx = null) {
     // 1. Foundation
     if (canMoveCardToFoundation(card, currentState.foundations)) {
         await doMove(1, fromLocation, `d${card.suit}`);
@@ -345,20 +321,20 @@ async function tryAutoDestinations(card, fromLocation, excludeFreecellIdx = null
     }
 
     // 2. Tableau (non-empty stacks only)
-    for (let i = 0; i < currentState.tableau.length; i++) {
-        const destCol = currentState.tableau[i];
+    for (let i = 0; i < tableau.length; i++) {
+        const destCol = tableau[i];
         if (destCol.length === 0) continue; // skip empty columns
-        if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting())) {
+        if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting(), tableau, srcIdx, i)) {
             await doMove(1, fromLocation, `t${i}`);
             return true;
         }
     }
 
     // 3. Tableau (empty columns only)
-    for (let i = 0; i < currentState.tableau.length; i++) {
-        const destCol = currentState.tableau[i];
+    for (let i = 0; i < tableau.length; i++) {
+        const destCol = tableau[i];
         if (destCol.length !== 0) continue; // skip non-empty
-        if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting())) {
+        if (canMoveStackToTableau([card], destCol, currentState.freecells, getKingsOnlySetting(), tableau, srcIdx, i)) {
             await doMove(1, fromLocation, `t${i}`);
             return true;
         }
@@ -377,6 +353,7 @@ async function tryAutoDestinations(card, fromLocation, excludeFreecellIdx = null
 }
 
 
+
 async function validateMove(num, source, dest) {
     const res = await fetch('validate-move', {
         method: 'POST',
@@ -387,7 +364,7 @@ async function validateMove(num, source, dest) {
     const json = await res.json();
     if (!res.ok || !json.valid) {
         showMessage('Illegal move: ' + (json.error || 'Not allowed'));
-        clearSelection();
+        resetSelection();
         return false;
     }
     return true;

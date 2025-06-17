@@ -1,7 +1,20 @@
 import { setupRender, renderGame, highlightSelection, clearSelection } from './render.js';
-import { isAnimating, autoMoveOnDoubleClick, selectSourceOrMove } from './moveLogic.js';
+import { isAnimating, autoMoveOnDoubleClick, selectSourceOrMove, runAutoMoveToFoundation, resetSelection } from './moveLogic.js';
 import { fetchInitialState, newGame, undoMove } from './state.js';
 import { showMessage } from './ui.js';
+
+import { state } from './state.js';
+
+const toggleBtn = document.getElementById('toggle-auto-move-btn');
+toggleBtn.addEventListener('click', () => {
+  state.autoMoveEnabled = !state.autoMoveEnabled;
+  toggleBtn.textContent = `Auto-Move: ${state.autoMoveEnabled ? "ON" : "OFF"}`;
+  resetSelection(); // <-- Add this!
+  if (state.autoMoveEnabled) {
+    runAutoMoveToFoundation();
+  }
+});
+
 
 document.addEventListener('DOMContentLoaded', () => {
     setupRender();  // Any initial DOM setup, if needed
