@@ -2,7 +2,7 @@
 import { renderGame, renderTableauWithFakeFreecells } from './render.js';
 import { sleep } from './utils.js';
 
-export const DOUBLE_CLICK_ANIM_DELAY = 180;
+export const DOUBLE_CLICK_ANIM_DELAY = 240;
 export const AUTO_MOVE_ANIM_DELAY = 250;
 
 export async function runAnimationFromTableau(numCards, srcIdx, destIdx, state, delay = 60) {
@@ -105,138 +105,287 @@ function countMaxMovable(animTableau, animFreecells, srcColIdx, destColIdx) {
     return (emptyFreecells + 1) * (emptyTableaus + 1);
 }
 
-// Step builder: Generates explicit move-by-move steps for a greedy supermove animation
 function buildAnimStepsGreedy(numCards, srcColIdx, destColIdx, animTableau, animFreecells) {
-    // Only allow supermove from tableau, not from freecell
-    if (srcColIdx < 0 || srcColIdx > 7) {
-        console.warn(`Supermove requested from srcColIdx=${srcColIdx}, but that's not a tableau!`);
-        return false;
-    }
-
-    const steps = [];
+    // Defensive copy
     const tableauCopy = animTableau.map(col => col.slice());
     const freecellsCopy = animFreecells.slice();
+    const steps = [];
 
-    const srcStack = tableauCopy[srcColIdx];
-    if (srcStack.length < numCards) {
-        return false;
-    }
-    const cardsToMove = srcStack.slice(-numCards);
-    const movedToFreecells = [];
+    // Setup
+    const emptyFreecellIdxs = freecellsCopy
+        .map((c, idx) => c === null ? idx : null)
+        .filter(idx => idx !== null);
+    const reusableFreecellsCount = emptyFreecellIdxs.length;
     const helperTableaus = [];
+    const helperTableauIdxs = [];
+    for (let t = 0; t < tableauCopy.length; t++) {
+        if (
+            t !== srcColIdx &&
+            t !== destColIdx &&
+            tableauCopy[t].length === 0
+        ) {
+            helperTableauIdxs.push(t);
+        }
+    }
 
-    // -- Helper function for moving a stack from a tableau to the dest (could be recursive, but we do it iteratively here)
-    function greedyFlushFromHelper(num, fromIdx, destIdx, tableauCopy, freecellsCopy, steps) {
-        const localMovedToFreecells = [];
-        for (let i = 0; i < num - 1; i++) {
-            let parked = false;
-            // Use any available freecells first
-            for (let fc = 0; fc < freecellsCopy.length; fc++) {
-                if (freecellsCopy[fc] === null) {
-                    steps.push({ from: { type: 'tableau', idx: fromIdx }, to: { type: 'freecell', idx: fc } });
-                    freecellsCopy[fc] = tableauCopy[fromIdx][tableauCopy[fromIdx].length - 1];
-                    localMovedToFreecells.push({ card: tableauCopy[fromIdx][tableauCopy[fromIdx].length - 1], fc });
-                    tableauCopy[fromIdx].pop();
-                    parked = true;
+    let cardsLeftToMove = numCards;
+
+    // === 2. Early Exit Optimization ===
+    if (cardsLeftToMove <= reusableFreecellsCount + 1) {
+        // Park first (cardsLeftToMove - 1) cards to lowest indices
+        let toPark = cardsLeftToMove - 1;
+        for (let k = 0; k < toPark; k++) {
+            for (let j = 0; j < emptyFreecellIdxs.length; j++) {
+                let fcIdx = emptyFreecellIdxs[j];
+                if (freecellsCopy[fcIdx] === null && tableauCopy[srcColIdx].length > 0) {
+                    let card = tableauCopy[srcColIdx].pop();
+                    steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'freecell', idx: fcIdx } });
+                    freecellsCopy[fcIdx] = card;
+                    cardsLeftToMove--;
                     break;
                 }
             }
-            if (!parked) {
-                // Try any available empty tableau (not src or dest)
-                let foundEmpty = false;
-                for (let t = 0; t < tableauCopy.length; t++) {
-                    if (t !== fromIdx && t !== destIdx && tableauCopy[t].length === 0) {
-                        steps.push({ from: { type: 'tableau', idx: fromIdx }, to: { type: 'tableau', idx: t } });
-                        tableauCopy[t].push(tableauCopy[fromIdx][tableauCopy[fromIdx].length - 1]);
-                        tableauCopy[fromIdx].pop();
-                        foundEmpty = true;
-                        // Now flush all local freecells to this tableau, in reverse order
-                        for (let j = localMovedToFreecells.length - 1; j >= 0; j--) {
-                            const { card, fc } = localMovedToFreecells[j];
-                            steps.push({ from: { type: 'freecell', idx: fc }, to: { type: 'tableau', idx: t } });
-                            tableauCopy[t].push(card);
-                            freecellsCopy[fc] = null;
-                        }
-                        localMovedToFreecells.length = 0;
-                        // Now recursively flush t to dest
-                        greedyFlushFromHelper(num - i - 1, t, destIdx, tableauCopy, freecellsCopy, steps);
-                        return;
-                    }
-                }
-                if (!foundEmpty) {
-                    throw new Error("No freecells or empty tableau to flush helper");
+        }
+        // Move last card to destination
+        if (tableauCopy[srcColIdx].length > 0) {
+            steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'tableau', idx: destColIdx } });
+            tableauCopy[srcColIdx].pop();
+            cardsLeftToMove--;
+        }
+        // Flush all parked cards from freecells to destination (reverse order)
+        for (let j = emptyFreecellIdxs.length - 1; j >= 0; j--) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] !== null) {
+                steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: destColIdx } });
+                freecellsCopy[fcIdx] = null;
+            }
+        }
+        return steps;
+    }
+
+    // === 3. Forward Phase ===
+    let usedHelperIdxs = [];
+    while (cardsLeftToMove > reusableFreecellsCount + 1) {
+        // Flush occupied freecells to most recent helper tableau
+        if (helperTableaus.length > 0) {
+            let helperIdx = helperTableaus[helperTableaus.length - 1].idx;
+            for (let j = emptyFreecellIdxs.length - 1; j >= 0; j--) {
+                let fcIdx = emptyFreecellIdxs[j];
+                if (freecellsCopy[fcIdx] !== null) {
+                    let card = freecellsCopy[fcIdx];
+                    steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: helperIdx } });
+                    tableauCopy[helperIdx].push(card);
+                    freecellsCopy[fcIdx] = null;
                 }
             }
         }
-        // Final move: move last card in helper to destination
-        steps.push({ from: { type: 'tableau', idx: fromIdx }, to: { type: 'tableau', idx: destIdx } });
-        tableauCopy[fromIdx].pop();
-        // Flush any left-over cards from local freecells to destination
-        for (let j = localMovedToFreecells.length - 1; j >= 0; j--) {
-            const { card, fc } = localMovedToFreecells[j];
-            steps.push({ from: { type: 'freecell', idx: fc }, to: { type: 'tableau', idx: destIdx } });
-            freecellsCopy[fc] = null;
+        // Park batch of freecells from srcCol
+        let batch = 0;
+        for (let k = 0; k < emptyFreecellIdxs.length && cardsLeftToMove > 1; k++) {
+            let fcIdx = emptyFreecellIdxs[k];
+            if (freecellsCopy[fcIdx] === null && tableauCopy[srcColIdx].length > 0) {
+                let card = tableauCopy[srcColIdx].pop();
+                steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'freecell', idx: fcIdx } });
+                freecellsCopy[fcIdx] = card;
+                cardsLeftToMove--;
+                batch++;
+            }
         }
-    }
-
-    // PARKING PHASE: just as before
-    for (let i = 0; i < numCards - 1; i++) {
-        let parked = false;
-        for (let fc = 0; fc < freecellsCopy.length; fc++) {
-            if (freecellsCopy[fc] === null) {
-                steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'freecell', idx: fc } });
-                freecellsCopy[fc] = cardsToMove[i];
-                movedToFreecells.push({ card: cardsToMove[i], fc });
-                tableauCopy[srcColIdx].pop();
-                parked = true;
+        // Move one card from srcCol to a new helper tableau
+        let helperIdx = null;
+        for (let i = 0; i < helperTableauIdxs.length; i++) {
+            let idx = helperTableauIdxs[i];
+            if (!usedHelperIdxs.includes(idx)) {
+                helperIdx = idx;
+                usedHelperIdxs.push(idx);
                 break;
             }
         }
-        if (!parked) {
-            let foundEmpty = false;
-            for (let t = 0; t < tableauCopy.length; t++) {
-                if (t !== srcColIdx && t !== destColIdx && tableauCopy[t].length === 0) {
-                    steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'tableau', idx: t } });
-                    tableauCopy[t].push(cardsToMove[i]);
-                    tableauCopy[srcColIdx].pop();
-                    foundEmpty = true;
-                    for (let j = movedToFreecells.length - 1; j >= 0; j--) {
-                        const { card, fc } = movedToFreecells[j];
-                        steps.push({ from: { type: 'freecell', idx: fc }, to: { type: 'tableau', idx: t } });
-                        tableauCopy[t].push(card);
-                        freecellsCopy[fc] = null;
-                    }
-                    // Save how many cards we just put on t (for later flush phase)
-                    helperTableaus.push({ idx: t, count: movedToFreecells.length + 1 });
-                    movedToFreecells.length = 0;
-                    break;
-                }
+        if (helperIdx === null) break;
+        if (tableauCopy[srcColIdx].length > 0) {
+            let card = tableauCopy[srcColIdx].pop();
+            steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'tableau', idx: helperIdx } });
+            tableauCopy[helperIdx].push(card);
+            cardsLeftToMove--;
+            helperTableaus.push({ idx: helperIdx, flushCounts: [batch] });
+        }
+    }
+
+    // === 4. Threshold Phase ===
+    let toFlush = cardsLeftToMove - 1;
+    if (helperTableaus.length > 0 && toFlush > 0) {
+        let helperIdx = helperTableaus[helperTableaus.length - 1].idx;
+        let flushed = 0;
+        for (let j = emptyFreecellIdxs.length - 1; j >= 0 && flushed < toFlush; j--) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] !== null) {
+                let card = freecellsCopy[fcIdx];
+                steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: helperIdx } });
+                tableauCopy[helperIdx].push(card);
+                freecellsCopy[fcIdx] = null;
+                flushed++;
             }
-            if (!foundEmpty) {
-                return false;
+        }
+        if (flushed > 0) {
+            helperTableaus[helperTableaus.length - 1].flushCounts.push(flushed);
+        }
+    }
+
+    // Park the next (toFlush) cards from srcCol to freecells
+    for (let k = 0; k < toFlush; k++) {
+        for (let j = 0; j < emptyFreecellIdxs.length; j++) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] === null && tableauCopy[srcColIdx].length > 0) {
+                let card = tableauCopy[srcColIdx].pop();
+                steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'freecell', idx: fcIdx } });
+                freecellsCopy[fcIdx] = card;
+                break;
             }
         }
     }
 
-    // FINAL MOVE: last card in stack to destination
-    steps.push({
-        from: { type: 'tableau', idx: srcColIdx },
-        to: { type: destColIdx === -1 ? 'foundation' : 'tableau', idx: destColIdx }
-    });
-    tableauCopy[srcColIdx].pop();
-
-    // FLUSH REMAINING FREECELLS: (if any left, never flushed to a helper tableau)
-    for (let j = movedToFreecells.length - 1; j >= 0; j--) {
-        const { card, fc } = movedToFreecells[j];
-        steps.push({ from: { type: 'freecell', idx: fc }, to: { type: destColIdx === -1 ? 'foundation' : 'tableau', idx: destColIdx } });
-        freecellsCopy[fc] = null;
+    // Move last card from srcCol to destination
+    if (tableauCopy[srcColIdx].length > 0) {
+        steps.push({ from: { type: 'tableau', idx: srcColIdx }, to: { type: 'tableau', idx: destColIdx } });
+        tableauCopy[srcColIdx].pop();
     }
 
-    // FLUSH HELPERS: Use greedyFlushFromHelper for each helper in reverse order (last helper flushed first, as per Freecell convention)
-    for (let h = helperTableaus.length - 1; h >= 0; h--) {
-        const { idx, count } = helperTableaus[h];
-        greedyFlushFromHelper(count, idx, destColIdx, tableauCopy, freecellsCopy, steps);
+    // Flush just-parked freecells to destination
+    for (let f = 0; f < toFlush; f++) {
+        for (let j = emptyFreecellIdxs.length - 1; j >= 0; j--) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] !== null) {
+                steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: destColIdx } });
+                freecellsCopy[fcIdx] = null;
+                break;
+            }
+        }
     }
+
+    // Mini-unwind: Move (toFlush) cards from the most recent helper tableau to lowest freecells,
+    // then move last helper card to destination, then flush any occupied freecells to destination
+    if (helperTableaus.length > 0 && toFlush > 0) {
+        let helperIdx = helperTableaus[helperTableaus.length - 1].idx;
+
+        // Park (toFlush) cards from helper tableau to lowest available freecells
+        for (let m = 0; m < toFlush; m++) {
+            for (let k = 0; k < emptyFreecellIdxs.length; k++) {
+                let fcIdx = emptyFreecellIdxs[k];
+                if (freecellsCopy[fcIdx] === null && tableauCopy[helperIdx].length > 0) {
+                    let card = tableauCopy[helperIdx].pop();
+                    steps.push({ from: { type: 'tableau', idx: helperIdx }, to: { type: 'freecell', idx: fcIdx } });
+                    freecellsCopy[fcIdx] = card;
+                    break;
+                }
+            }
+        }
+
+        // Park all but one remaining card from helper tableau to freecells (if any)
+        let cardsToPark = tableauCopy[helperIdx].length - 1;
+        for (let m = 0; m < cardsToPark; m++) {
+            let parkedOne = false;
+            for (let k = 0; k < emptyFreecellIdxs.length; k++) {
+                let fcIdx = emptyFreecellIdxs[k];
+                if (freecellsCopy[fcIdx] === null && tableauCopy[helperIdx].length > 0) {
+                    let card = tableauCopy[helperIdx].pop();
+                    steps.push({ from: { type: 'tableau', idx: helperIdx }, to: { type: 'freecell', idx: fcIdx } });
+                    freecellsCopy[fcIdx] = card;
+                    parkedOne = true;
+                    break;
+                }
+            }
+            if (!parkedOne) break;
+        }
+
+        // Move last card from helper tableau to destination
+        if (tableauCopy[helperIdx].length === 1) {
+            steps.push({ from: { type: 'tableau', idx: helperIdx }, to: { type: 'tableau', idx: destColIdx } });
+            tableauCopy[helperIdx].pop();
+        }
+
+        // Flush all occupied freecells to destination (highest indices first)
+        for (let j = emptyFreecellIdxs.length - 1; j >= 0; j--) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] !== null) {
+                steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: destColIdx } });
+                freecellsCopy[fcIdx] = null;
+            }
+        }
+    }
+
+    // Special case: if toFlush === 0, need to unwind the last helperTableau fully
+    if (helperTableaus.length > 0 && toFlush === 0) {
+        let helperIdx = helperTableaus[helperTableaus.length - 1].idx;
+
+        // Park all but one remaining card from helper tableau to freecells (if any)
+        let cardsToPark = tableauCopy[helperIdx].length - 1;
+        for (let m = 0; m < cardsToPark; m++) {
+            let parkedOne = false;
+            for (let k = 0; k < emptyFreecellIdxs.length; k++) {
+                let fcIdx = emptyFreecellIdxs[k];
+                if (freecellsCopy[fcIdx] === null && tableauCopy[helperIdx].length > 0) {
+                    let card = tableauCopy[helperIdx].pop();
+                    steps.push({ from: { type: 'tableau', idx: helperIdx }, to: { type: 'freecell', idx: fcIdx } });
+                    freecellsCopy[fcIdx] = card;
+                    parkedOne = true;
+                    break;
+                }
+            }
+            if (!parkedOne) break;
+        }
+
+        // Move last card from helper tableau to destination
+        if (tableauCopy[helperIdx].length === 1) {
+            steps.push({ from: { type: 'tableau', idx: helperIdx }, to: { type: 'tableau', idx: destColIdx } });
+            tableauCopy[helperIdx].pop();
+        }
+
+        // Flush all occupied freecells to destination (highest indices first)
+        for (let j = emptyFreecellIdxs.length - 1; j >= 0; j--) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] !== null) {
+                steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: destColIdx } });
+                freecellsCopy[fcIdx] = null;
+            }
+        }
+    }
+
+
+    // === 5. General Unwind Phase ===
+    for (let h = helperTableaus.length - 2; h >= 0; h--) { // -2: skip the last (already handled by mini-unwind)
+        let { idx, flushCounts } = helperTableaus[h];
+        // For each flushCount, move that many cards from tableau to lowest available freecells
+        for (let f = 0; f < flushCounts.length; f++) {
+            let numToUnpark = flushCounts[f];
+            for (let m = 0; m < numToUnpark; m++) {
+                for (let k = 0; k < emptyFreecellIdxs.length; k++) {
+                    let fcIdx = emptyFreecellIdxs[k];
+                    if (freecellsCopy[fcIdx] === null && tableauCopy[idx].length > 0) {
+                        let card = tableauCopy[idx].pop();
+                        steps.push({ from: { type: 'tableau', idx }, to: { type: 'freecell', idx: fcIdx } });
+                        freecellsCopy[fcIdx] = card;
+                        break;
+                    }
+                }
+            }
+        }
+        // Move the final card from helper tableau to destination
+        if (tableauCopy[idx].length > 0) {
+            steps.push({ from: { type: 'tableau', idx }, to: { type: 'tableau', idx: destColIdx } });
+            tableauCopy[idx].pop();
+        }
+        // Flush any occupied freecells (highest indices first) to destination
+        for (let j = emptyFreecellIdxs.length - 1; j >= 0; j--) {
+            let fcIdx = emptyFreecellIdxs[j];
+            if (freecellsCopy[fcIdx] !== null) {
+                steps.push({ from: { type: 'freecell', idx: fcIdx }, to: { type: 'tableau', idx: destColIdx } });
+                freecellsCopy[fcIdx] = null;
+            }
+        }
+    }
+    // (Place this block immediately before: return steps;)
+
+
 
     return steps;
 }

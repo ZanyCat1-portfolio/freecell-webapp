@@ -6,14 +6,28 @@ import { showMessage } from './ui.js';
 import { state } from './state.js';
 
 const toggleBtn = document.getElementById('toggle-auto-move-btn');
+
+// Near the top (after import { state } ...)
+const autoMovePref = localStorage.getItem('autoMoveEnabled');
+if (autoMovePref !== null) {
+  state.autoMoveEnabled = autoMovePref === 'true';
+} else {
+  state.autoMoveEnabled = true; // or your preferred default
+}
+toggleBtn.textContent = `Auto-Move: ${state.autoMoveEnabled ? "ON" : "OFF"}`;
+
+
+
 toggleBtn.addEventListener('click', () => {
   state.autoMoveEnabled = !state.autoMoveEnabled;
+  localStorage.setItem('autoMoveEnabled', state.autoMoveEnabled); // <-- Save state
   toggleBtn.textContent = `Auto-Move: ${state.autoMoveEnabled ? "ON" : "OFF"}`;
-  resetSelection(); // <-- Add this!
+  resetSelection();
   if (state.autoMoveEnabled) {
     runAutoMoveToFoundation();
   }
 });
+
 
 
 document.addEventListener('DOMContentLoaded', () => {
