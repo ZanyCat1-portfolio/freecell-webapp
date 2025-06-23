@@ -156,6 +156,7 @@ function renderHighScores(scores) {
             <td>${entry.date}</td>
             <td>${entry.time}</td>
             <td>${formattedRuntime}</td>
+            <td>${entry.seed !== undefined ? entry.seed : ''}</td>
             <td>${entry.moves}</td>
         `;
         highScoresTableBody.appendChild(tr);
@@ -163,7 +164,7 @@ function renderHighScores(scores) {
 }
 
 function fetchAndShowHighScores() {
-    fetch('/high-scores')
+    fetch('high-scores')
         .then(res => res.json())
         .then(scores => {
             renderHighScores(scores);
@@ -180,7 +181,7 @@ closeHighScoresBtn.addEventListener('click', () => {
 if (clearHighScoresBtn) {
     clearHighScoresBtn.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear all high scores?')) {
-            fetch('/clear-high-scores', { method: 'POST' })
+            fetch('clear-high-scores', { method: 'POST' })
                 .then(res => {
                     if (res.ok) fetchAndShowHighScores();
                 });

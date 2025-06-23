@@ -8,7 +8,7 @@ import uuid
 import sys
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 games = {}
 
@@ -32,7 +32,7 @@ def save_high_scores(scores):
     with open(HIGH_SCORES_FILE, "w") as f:
         json.dump(scores, f)
 
-def add_high_score(moves, runtime):
+def add_high_score(moves, runtime,seed):
     scores = load_high_scores()
     now = datetime.now()
     date_str = now.strftime("%Y-%m-%d")
@@ -41,7 +41,8 @@ def add_high_score(moves, runtime):
         "date": date_str,
         "time": time_str,
         "moves": moves,
-        "runtime": runtime
+        "runtime": runtime,
+        "seed": seed
     }
     scores.append(new_entry)
     # Sort by moves ascending, then by date/time ascending (older is better)
@@ -74,7 +75,7 @@ def create_new_game(seed=None, kings_only_on_empty_tableau=False):
         'history': history,
         'seed': seed,
         'kings_only_on_empty_tableau': kings_only_on_empty_tableau,
-        'start_time': datetime.now().isoformat(),
+        'start_time': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'move_count': 0
     }
 
@@ -266,13 +267,17 @@ def move():
         # Calculate runtime in seconds
         if 'start_time' in state:
             started = datetime.fromisoformat(state['start_time'])
-            runtime = (datetime.now() - started).total_seconds()
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            runtime = (now - started).total_seconds()
         else:
             runtime = None  # fallback
 
         add_high_score(
             moves=state.get('move_count', 0),
-            runtime=runtime
+            runtime=runtime,
+            seed=state.get('seed')
         )
         return jsonify({'message': 'You won!', 'state': serialize_state(state), 'runtime': runtime})
 
