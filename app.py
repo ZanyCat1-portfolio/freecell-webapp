@@ -6,6 +6,9 @@ import random
 import copy
 import uuid
 import sys
+import json
+import os
+from datetime import datetime
 
 games = {}
 
@@ -15,6 +18,38 @@ CORS(app)
 
 # Detect test mode from command line argument
 TEST_MODE = (len(sys.argv) > 1 and sys.argv[1] == 'test')
+
+HIGH_SCORES_FILE = "high_scores.json"
+MAX_HIGH_SCORES = 20  # or however many you want to keep
+
+def load_high_scores():
+    if not os.path.exists(HIGH_SCORES_FILE):
+        return []
+    with open(HIGH_SCORES_FILE, "r") as f:
+        return json.load(f)
+
+def save_high_scores(scores):
+    with open(HIGH_SCORES_FILE, "w") as f:
+        json.dump(scores, f)
+
+def add_high_score(moves, runtime):
+    scores = load_high_scores()
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M")
+    new_entry = {
+        "date": date_str,
+        "time": time_str,
+        "moves": moves,
+        "runtime": runtime
+    }
+    scores.append(new_entry)
+    # Sort by moves ascending, then by date/time ascending (older is better)
+    scores.sort(key=lambda s: (s["moves"], s["date"], s["time"]))
+    # Keep only top N
+    scores = scores[:MAX_HIGH_SCORES]
+    save_high_scores(scores)
+
 
 def create_new_game(seed=None, kings_only_on_empty_tableau=False):
     deck = [cards.Card(rank, suit) for suit in cards.SUITS for rank in cards.RANKS]
@@ -38,7 +73,9 @@ def create_new_game(seed=None, kings_only_on_empty_tableau=False):
         'foundations': foundations,
         'history': history,
         'seed': seed,
-        'kings_only_on_empty_tableau': kings_only_on_empty_tableau
+        'kings_only_on_empty_tableau': kings_only_on_empty_tableau,
+        'start_time': datetime.now().isoformat(),
+        'move_count': 0
     }
 
 def create_test_game():
@@ -48,8 +85,9 @@ def create_test_game():
         [],
         [cards.Card('10', 'H'), cards.Card('K', 'C'), cards.Card('A', 'C'), cards.Card('J', 'S'),
          cards.Card('2', 'D'), cards.Card('5', 'D'), cards.Card('9', 'S'), cards.Card('8', 'D'),
-         cards.Card('7', 'C'), cards.Card('6', 'H'), cards.Card('5', 'S'), cards.Card('4', 'D'), cards.Card('3', 'C')],
-        [cards.Card('3', 'S'), cards.Card('5', 'C'), cards.Card('K', 'S'), cards.Card('Q', 'H')],
+         cards.Card('7', 'C'), cards.Card('6', 'H'), cards.Card('5', 'S'), cards.Card('4', 'D'), cards.Card('3', 'C'),
+         cards.Card('3', 'S'), cards.Card('5', 'C'), cards.Card('K', 'S'), cards.Card('Q', 'H')],
+        [],
         [cards.Card('K', 'D'), cards.Card('Q', 'C'), cards.Card('J', 'D'), cards.Card('10', 'C'),
          cards.Card('9', 'D'), cards.Card('8', 'S'), cards.Card('7', 'D'), cards.Card('6', 'C'),
          cards.Card('5', 'H'), cards.Card('4', 'S'), cards.Card('3', 'D')],
@@ -87,7 +125,9 @@ def serialize_state(state):
         'freecells': [serialize_card(c) for c in state['freecells']],
         'foundations': {suit: serialize_pile(pile) for suit, pile in state['foundations'].items()},
         'seed': state.get('seed'),
-        'kings_only_on_empty_tableau': state.get('kings_only_on_empty_tableau', False)
+        'kings_only_on_empty_tableau': state.get('kings_only_on_empty_tableau', False),
+        'move_count': state.get('move_count', 0),
+        'start_time': state.get('start_time')
     }
 
 def deep_copy_game(state):
@@ -125,6 +165,19 @@ def get_game_state():
 def save_game_state(state):
     sid = session['session_id']
     games[sid] = state
+
+
+@app.route('/high-scores', methods=['GET'])
+def get_high_scores():
+    return jsonify(load_high_scores())
+
+@app.route('/clear-high-scores', methods=['POST'])
+def clear_high_scores():
+    save_high_scores([])
+    return jsonify({"message": "High scores cleared!"}), 200
+
+
+
 
 @app.route('/newgame', methods=['POST'])
 def new_game():
@@ -172,6 +225,9 @@ def move():
     state = get_game_state()
     if not state:
         return jsonify({'error': 'No game in progress'}), 400
+    
+    if state.get('game_over'):
+        return jsonify({'error': 'Game is over. Start a new game!'}), 400
 
     data = request.json
     num = data.get('num')
@@ -198,19 +254,35 @@ def move():
     if not success:
         state['history'].pop()
         return jsonify({'error': reason}), 400
+    
+    state['move_count'] = state.get('move_count', 0) + 1
 
     # Set auto-move trigger only if not pulling a card from a foundation
     state['last_action_was_manual_move'] = (source_type != 'foundation')
 
     # Check win
     if game_logic.check_win(state['foundations']):
-        return jsonify({'message': 'You won!', 'state': serialize_state(state)})
+        state['game_over'] = True
+        # Calculate runtime in seconds
+        if 'start_time' in state:
+            started = datetime.fromisoformat(state['start_time'])
+            runtime = (datetime.now() - started).total_seconds()
+        else:
+            runtime = None  # fallback
+
+        add_high_score(
+            moves=state.get('move_count', 0),
+            runtime=runtime
+        )
+        return jsonify({'message': 'You won!', 'state': serialize_state(state), 'runtime': runtime})
+
 
     # Attempt auto-moves
     if state.get('last_action_was_manual_move', False):
         state['last_action_was_manual_move'] = False
         if game_logic.check_win(state['foundations']):
-            return jsonify({'message': 'You won!', 'state': serialize_state(state)})
+            state['game_over'] = True
+            return jsonify({'message': 'You won!', 'state': serialize_state(state), 'runtime': runtime})
 
     save_game_state(state)
     return jsonify({'message': 'Move successful', 'state': serialize_state(state)})
@@ -249,6 +321,9 @@ def undo():
     state = get_game_state()
     if not state:
         return jsonify({'error': 'No game in progress'}), 400
+
+    if state.get('game_over'):
+        return jsonify({'error': 'Game is over. Start a new game!'}), 400
 
     if not state['history']:
         return jsonify({'error': 'No moves to undo'}), 400

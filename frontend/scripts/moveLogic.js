@@ -9,7 +9,7 @@ import {
     isValidStack,
     convertLocationToOneBased
 } from './rules.js';
-import { runAnimationFromFreecell, runAnimationFromTableau, DOUBLE_CLICK_ANIM_DELAY, AUTO_MOVE_ANIM_DELAY } from './animation.js';
+import { runAnimationFromFreecell, runAnimationFromTableau } from './animation.js';
 import { sleep } from './utils.js';
 import { state } from './state.js';
 
@@ -40,7 +40,7 @@ export async function runAutoMoveToFoundation() {
             canMoveCardToFoundation(card, currentState.foundations) &&
             isSafeToAutoMove(card, currentState.foundations)
         ) {
-            await runAnimationFromTableau(1, i, -1, currentState, AUTO_MOVE_ANIM_DELAY);
+            await runAnimationFromTableau(1, i, -1, currentState); // ← No delay arg
             await tryMove(1, `t${i + 1}`, `d${card.suit}`);
             return true;
         }
@@ -56,15 +56,16 @@ export async function runAutoMoveToFoundation() {
             canMoveCardToFoundation(card, currentState.foundations) &&
             isSafeToAutoMove(card, currentState.foundations)
         ) {
-            await runAnimationFromFreecell('freecell', i, 'foundation', card.suit, currentState, AUTO_MOVE_ANIM_DELAY);
+            await runAnimationFromFreecell('freecell', i, 'foundation', card.suit, currentState); // ← No delay arg
             await tryMove(1, `f${i + 1}`, `d${card.suit}`);
             return true;
         }
     }
 
-    // No auto-move performed
     return false;
 }
+
+
 
 function isSafeToAutoMove(card, foundations) {
     const rankValues = { A: 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6,
@@ -173,19 +174,21 @@ export async function doMove(numCards, src, dest) {
         suppressAutoMoveCard = null; // Clear suppression for any other source
     }
 
+    // If supermove (multi-card tableau-to-tableau), animate with user-set delay
     if (src.startsWith('t') && dest.startsWith('t') && numCards > 1) {
         const srcIdx = parseInt(src.slice(1));
         const destIdx = parseInt(dest.slice(1));
         const valid = await validateMove(numCards, convertLocationToOneBased(src), convertLocationToOneBased(dest));
         if (!valid) return;
         isAnimating.value = true;
-        await runAnimationFromTableau(numCards, srcIdx, destIdx, currentState, DOUBLE_CLICK_ANIM_DELAY);
+        await runAnimationFromTableau(numCards, srcIdx, destIdx, currentState); // delay is picked up dynamically
         isAnimating.value = false;
     }
 
     await tryMove(numCards, convertLocationToOneBased(src), convertLocationToOneBased(dest));
-    // await runAutoMoveToFoundation();
+    // await runAutoMoveToFoundation(); // (leave commented out unless you want chain-moves)
 }
+
 
 
 export async function autoMoveOnDoubleClick(cardDiv) {

@@ -87,6 +87,7 @@ function renderTableau(tableau, changedCols = null) {
             tableau.forEach((col, idx) => {
                 container.appendChild(createColumnDiv(col, idx));
             });
+            adjustTableauHeights(tableau);
             return;
         }
         changedCols.forEach(idx => {
@@ -96,24 +97,53 @@ function renderTableau(tableau, changedCols = null) {
             container.replaceChild(newColDiv, oldColDiv);
         });
     }
+    adjustTableauHeights(tableau);
 }
+
 function createColumnDiv(col, idx) {
     const colDiv = document.createElement('div');
     colDiv.className = 'tableau-column pile';
     colDiv.dataset.location = `t${idx}`;
     col.forEach((card, cardIdx) => {
         const cardDiv = createCardDiv(card, `t${idx}`, cardIdx);
-        cardDiv.style.top = (cardIdx * 25) + 'px';
-        cardDiv.style.zIndex = cardIdx;
         colDiv.appendChild(cardDiv);
     });
     return colDiv;
 }
+
 function createCardDiv(card, location, cardIdx = null) {
     const div = document.createElement('div');
     div.className = 'card';
     div.style.backgroundImage = `url(${cardImageFile(card)})`;
     div.dataset.location = location;
-    if (cardIdx !== null) div.dataset.cardIdx = cardIdx;
+    if (cardIdx !== null) {
+        div.dataset.cardIdx = cardIdx;
+        div.style.setProperty('--card-idx', cardIdx);
+        div.style.setProperty('--card-z', cardIdx);
+    }
     return div;
+}
+
+/**
+ * Dynamically adjusts tableau column heights.
+ * By default, min-height fits 13 cards (1 full + 12 stacked).
+ * If any column has >13 cards, all columns grow to fit the max.
+ * Shrinks back down if all have ≤13 cards.
+ */
+function adjustTableauHeights(tableau) {
+    const maxCards = Math.max(...tableau.map(col => col.length));
+    // For 13 cards: 1 full + 12 offsets
+    const defaultHeight = `calc(var(--card-height) + (12 * var(--card-stack-spacing)))`;
+    let dynamicHeight = defaultHeight;
+    if (maxCards > 13) {
+        dynamicHeight = `calc(var(--card-height) + (${maxCards - 1} * var(--card-stack-spacing)))`;
+    }
+
+    document.querySelectorAll('.tableau-column').forEach(colDiv => {
+        if (maxCards > 13) {
+            colDiv.style.height = dynamicHeight;
+        } else {
+            colDiv.style.height = '';
+        }
+    });
 }

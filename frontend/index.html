@@ -9,25 +9,33 @@
 </head>
 <body>
   <h1>Freecell Web - Graphical</h1>
-  <div style="text-align: center; margin: 1em">
+
+  <!-- Main Info Bar -->
+  <div id="info-bar">
     <label style="user-select: none;">
       <input type="checkbox" id="kingsOnlyCheckbox" />
       Only Kings on Empty Tableau
     </label>
-    <span id="seed-display" style="margin-left:2em; font-weight: bold;">
+    <span id="seed-display">
       Seed:
-      <span id="seed-digits" style="display:inline-block; width:5ch; text-align:left;"></span>
+      <span id="seed-digits"></span>
     </span>
+    <span id="move-count">Moves: 0</span>
+    <span id="game-runtime">Time: 0:00</span>
   </div>
+
+
+  <!-- Main Controls -->
   <div id="controls">
-    <button id="new-game-btn">New Random Game</button>
-    <input type="number" id="seed-input" placeholder="Enter seed (optional)" min="1" max="32000" style="width: 22ch" />
-    <button id="new-seed-btn">New Seed Game</button>
+    <button id="restart-btn">Restart</button>
     <button id="undo-btn">Undo</button>
     <button id="toggle-auto-move-btn">Auto-Move: ON</button>
     <button id="cancel-game-btn">Cancel Game</button>
+    <button id="menu-btn">Menu</button>
   </div>
+
   <div id="message"></div>
+
   <div id="board-container">
     <div id="top-row">
         <div id="freecells"></div>
@@ -35,6 +43,77 @@
     </div>
     <div id="tableau"></div>
   </div>
+
+  <!-- Modal Menu Overlay -->
+  <div id="modal-overlay" class="hidden"></div>
+  <div id="menu-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="menu-title" tabindex="-1">
+    <div class="menu-header">
+      <span id="menu-title">Menu</span>
+      <button id="close-menu-btn" class="close-btn" aria-label="Close Menu">×</button>
+    </div>
+
+
+    <div class="menu-content" style="display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 2em;">
+      <!-- Left column: buttons/inputs -->
+      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 0.7em; flex: 1;">
+        <button id="new-game-btn">New Random Game</button>
+        <div class="menu-seed-section">
+          <input type="number" id="menu-seed-input" placeholder="Enter seed" min="1" max="32000" />
+          <button id="menu-seed-btn" disabled>Seed Game</button>
+        </div>
+        <button id="high-scores-btn">High Scores</button>
+      </div>
+
+      <!-- Right column: sliders -->
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 1.3em; min-width: 210px;">
+        <div class="menu-slider-section" style="display: flex; flex-direction: column; align-items: flex-end;">
+          <label for="doubleClickDelaySlider" style="margin-bottom: 0.25em;">Supermove Speed Delay</label>
+          <div style="display: flex; align-items: center; gap: 0.5em;">
+            <input type="range" id="doubleClickDelaySlider" min="40" max="700" value="240" style="width: 120px;">
+            <span id="doubleClickDelayValue">240ms</span>
+          </div>
+        </div>
+        <div class="menu-slider-section" style="display: flex; flex-direction: column; align-items: flex-end;">
+          <label for="autoMoveDelaySlider" style="margin-bottom: 0.25em;">Auto-move Speed Delay</label>
+          <div style="display: flex; align-items: center; gap: 0.5em;">
+            <input type="range" id="autoMoveDelaySlider" min="50" max="1000" value="250" style="width: 120px;">
+            <span id="autoMoveDelayValue">250ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    
+
+  </div>
+
+
+
+  <div id="high-scores-modal" class="hidden">
+    <div class="modal-content">
+      <h2>High Scores</h2>
+      <table id="high-scores-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Runtime</th>
+            <th>Moves</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Scores will be injected here -->
+        </tbody>
+      </table>
+      <button id="clear-high-scores-btn" class="danger">Clear High Scores</button>
+
+      <button id="close-high-scores-btn">Close</button>
+    </div>
+  </div>
+
+
+
   <script src="static/scripts/main.js" type="module"></script>
 </body>
 </html>

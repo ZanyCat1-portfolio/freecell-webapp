@@ -1,11 +1,22 @@
-// animation.js
 import { renderGame, renderTableauWithFakeFreecells } from './render.js';
 import { sleep } from './utils.js';
 
-export const DOUBLE_CLICK_ANIM_DELAY = 240;
-export const AUTO_MOVE_ANIM_DELAY = 250;
+function getDoubleClickAnimDelay() {
+    return (typeof window !== "undefined" && window.DOUBLE_CLICK_ANIM_DELAY !== undefined)
+        ? window.DOUBLE_CLICK_ANIM_DELAY
+        : 240;
+}
+function getAutoMoveAnimDelay() {
+    return (typeof window !== "undefined" && window.AUTO_MOVE_ANIM_DELAY !== undefined)
+        ? window.AUTO_MOVE_ANIM_DELAY
+        : 250;
+}
 
-export async function runAnimationFromTableau(numCards, srcIdx, destIdx, state, delay = 60) {
+// Use dynamic delay for tableau (supermove) animation
+export async function runAnimationFromTableau(numCards, srcIdx, destIdx, state, delay) {
+    // If delay arg is undefined, use global
+    if (typeof delay !== "number") delay = getDoubleClickAnimDelay();
+
     let animTableau = state.tableau.map(col => col.slice());
     let animFreecells = state.freecells.slice();
 
@@ -52,17 +63,18 @@ export async function runAnimationFromTableau(numCards, srcIdx, destIdx, state, 
             console.warn(`Unknown to.type: ${to.type}`);
         }
 
-        
         await sleep(delay);
         // Render, then yield to browser for one frame
         renderTableauWithFakeFreecells(animTableau, animFreecells);
         await new Promise(requestAnimationFrame);
-        // await sleep(delay);
     }
 }
 
-// New: Animate a single card move between any two locations
-export async function runAnimationFromFreecell(fromType, fromIdx, toType, toIdx, state, delay = 60) {
+// Use dynamic delay for auto-move to foundation
+export async function runAnimationFromFreecell(fromType, fromIdx, toType, toIdx, state, delay) {
+    // If delay arg is undefined, use global
+    if (typeof delay !== "number") delay = getAutoMoveAnimDelay();
+
     let animTableau = state.tableau.map(col => col.slice());
     let animFreecells = state.freecells.slice();
 
@@ -93,7 +105,6 @@ export async function runAnimationFromFreecell(fromType, fromIdx, toType, toIdx,
     await sleep(delay);
     renderTableauWithFakeFreecells(animTableau, animFreecells);
     await new Promise(requestAnimationFrame);
-    // await sleep(delay);
 }
 
 // Helper: How many cards can actually be moved via supermove logic?
