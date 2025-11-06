@@ -29,6 +29,7 @@ const menuBtn = document.getElementById('menu-btn');
 const menuModal = document.getElementById('menu-modal');
 const modalOverlay = document.getElementById('modal-overlay');
 const closeMenuBtn = document.getElementById('close-menu-btn');
+const newGameBtn = document.getElementById('new-game-btn');
 
 function openMenu() {
     menuModal.classList.remove('hidden');
@@ -41,7 +42,7 @@ function openMenu() {
 function closeMenu() {
     menuModal.classList.add('hidden');
     modalOverlay.classList.add('hidden');
-    menuBtn.focus();
+    newGameBtn.focus();
 }
 menuBtn.addEventListener('click', openMenu);
 modalOverlay.addEventListener('click', closeMenu);

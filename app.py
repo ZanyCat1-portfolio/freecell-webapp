@@ -214,6 +214,14 @@ def cancel_game():
     # Respond as “no game in progress”
     return jsonify({'message': 'Game cancelled.'}), 200
 
+@app.route('/game-won', methods=['POST'])
+def game_won():
+    sid = session.get('session_id')
+    if sid and sid in games:
+        del games[sid]
+    # Respond as “no game in progress”
+    return jsonify({'message': 'Game won!'}), 200
+
 @app.route('/state', methods=['GET'])
 def get_state():
     state = get_game_state()
