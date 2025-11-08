@@ -178,6 +178,7 @@ export async function tryMove(num, source, dest) {
         // --- WIN DETECTION: auto-show high scores modal ---
         if (json.message && json.message.includes('You won')) {
             await fetch('game-won', { method: 'POST', credentials: 'same-origin' });
+            await fetchInitialState()
             const mins = Math.floor(json.runtime / 60);
             const secs = Math.round(json.runtime % 60);
             document.getElementById('game-runtime').textContent =
